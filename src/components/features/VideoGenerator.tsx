@@ -20,6 +20,11 @@ export function VideoGenerator() {
   const [operationName, setOperationName] = useState<string | null>(null);
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
   
+  // New states for image-to-video functionality
+  const [generationMode, setGenerationMode] = useState<'text-to-video' | 'image-to-video'>('text-to-video');
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  
   // Get API key from localStorage
   const getApiKey = () => {
     if (typeof window !== 'undefined') {
@@ -28,9 +33,81 @@ export function VideoGenerator() {
     return null;
   };
 
+  // Handle image file selection
+  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setError('请选择有效的图片文件');
+        return;
+      }
+      
+      // Validate file size (max 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        setError('图片文件大小不能超过10MB');
+        return;
+      }
+      
+      setSelectedImage(file);
+      
+      // Create preview URL
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result;
+        if (typeof result === 'string') {
+          setImagePreview(result);
+        }
+      };
+      reader.readAsDataURL(file);
+      
+      setError(''); // Clear any existing errors
+    }
+  };
+
+  // Remove selected image
+  const removeSelectedImage = () => {
+    setSelectedImage(null);
+    setImagePreview(null);
+    // Reset file input
+    const fileInput = document.getElementById('image-upload') as HTMLInputElement;
+    if (fileInput) {
+      fileInput.value = '';
+    }
+  };
+
+  // Convert image to base64
+  const imageToBase64 = (file: File): Promise<{ imageBytes: string; mimeType: string }> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove data URL prefix to get just the base64 data
+        const splitResult = result.split(',');
+        const base64Data = splitResult.length > 1 ? splitResult[1] : splitResult[0];
+        if (!base64Data) {
+          reject(new Error('Failed to convert image to base64'));
+          return;
+        }
+        resolve({
+          imageBytes: base64Data,
+          mimeType: file.type
+        });
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleGenerate = async () => {
     if (!prompt.trim()) {
       setError('请输入视频描述');
+      return;
+    }
+
+    // Validate image requirement for image-to-video mode
+    if (generationMode === 'image-to-video' && !selectedImage) {
+      setError('图片+文本模式需要上传一张图片');
       return;
     }
 
@@ -57,17 +134,28 @@ export function VideoGenerator() {
         throw new Error('请先设置API Key');
       }
 
+      // Prepare request body
+      const requestBody: any = { 
+        prompt: prompt.trim(), 
+        model,
+        config,
+        apiKey
+      };
+
+      // Add image data if in image-to-video mode
+      if (generationMode === 'image-to-video' && selectedImage) {
+        setProgress('正在处理图片...');
+        const imageData = await imageToBase64(selectedImage);
+        requestBody.image = imageData;
+        setProgress('开始生成视频...');
+      }
+
       const response = await fetch('/api/generate-video', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
-          prompt: prompt.trim(), 
-          model,
-          config,
-          apiKey
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
@@ -269,10 +357,99 @@ export function VideoGenerator() {
           视频生成
         </CardTitle>
         <CardDescription>
-          使用 Google Veo AI 根据文本描述生成高质量视频
+          使用 Google Veo AI 根据文本描述或图片+文本生成高质量视频
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Generation Mode Selection */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">
+            生成模式
+          </label>
+          <div className="flex gap-2">
+            <Button
+              variant={generationMode === 'text-to-video' ? "primary" : "secondary"}
+              onClick={() => {
+                setGenerationMode('text-to-video');
+                // Clear image selection when switching to text-to-video
+                if (selectedImage) {
+                  removeSelectedImage();
+                }
+              }}
+              size="sm"
+              className="flex-1"
+            >
+              📝 文本生成视频
+            </Button>
+            <Button
+              variant={generationMode === 'image-to-video' ? "primary" : "secondary"}
+              onClick={() => setGenerationMode('image-to-video')}
+              size="sm"
+              className="flex-1"
+            >
+              🖼️ 图片+文本生成视频
+            </Button>
+          </div>
+          {generationMode === 'image-to-video' && (
+            <p className="text-xs text-blue-600">
+              💡 图片+文本模式：上传一张图片作为视频的起始帧，AI将基于图片和文本描述生成动画
+            </p>
+          )}
+        </div>
+
+        {/* Image Upload Section - Only show when image-to-video mode is selected */}
+        {generationMode === 'image-to-video' && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">
+              上传图片 *
+            </label>
+            {!selectedImage ? (
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+                <input
+                  id="image-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageSelect}
+                  className="hidden"
+                />
+                <label
+                  htmlFor="image-upload"
+                  className="cursor-pointer flex flex-col items-center space-y-2"
+                >
+                  <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                    <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">点击上传图片</p>
+                    <p className="text-xs text-gray-400">支持 JPG, PNG, GIF 格式，最大 10MB</p>
+                  </div>
+                </label>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="relative border border-gray-200 rounded-lg p-2 bg-gray-50">
+                  <img
+                    src={imagePreview!}
+                    alt="Preview"
+                    className="w-full h-32 object-cover rounded"
+                  />
+                  <button
+                    onClick={removeSelectedImage}
+                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
+                  >
+                    ×
+                  </button>
+                </div>
+                <p className="text-xs text-gray-600">
+                  已选择: {selectedImage.name} ({(selectedImage.size / 1024 / 1024).toFixed(2)} MB)
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Model Selection */}
         <div className="space-y-2">
           <label className="text-sm font-medium text-gray-700">

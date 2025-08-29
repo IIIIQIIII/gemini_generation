@@ -44,7 +44,8 @@ export async function POST(request: NextRequest) {
       prompt, 
       model = 'veo-3.0-fast-generate-preview',
       config = {},
-      apiKey 
+      apiKey,
+      image = null // Add image support
     } = await request.json();
 
     if (!prompt) {
@@ -81,6 +82,14 @@ export async function POST(request: NextRequest) {
         aspectRatio: config.aspectRatio || '16:9'
       }
     };
+
+    // Add image input if provided
+    if (image) {
+      requestConfig.image = {
+        imageBytes: image.imageBytes,
+        mimeType: image.mimeType || 'image/png',
+      };
+    }
 
     // Add optional configuration parameters
     if (config.negativePrompt) {
