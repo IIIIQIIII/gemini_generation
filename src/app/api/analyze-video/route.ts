@@ -1,12 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import { env } from '~/env';
 
 const genAI = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 
+interface AnalyzeVideoRequest {
+  prompt: string;
+  videoData?: string;
+  youtubeUrl?: string;
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { prompt, videoData, youtubeUrl } = await request.json();
+    const { prompt, videoData, youtubeUrl }: AnalyzeVideoRequest = await request.json() as AnalyzeVideoRequest;
 
     if (!prompt) {
       return NextResponse.json(

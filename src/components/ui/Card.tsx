@@ -3,7 +3,9 @@
 import { forwardRef } from "react";
 import { cn } from "~/lib/utils";
 
-export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {}
+export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  // Add any custom props here if needed in the future
+}
 
 const Card = forwardRef<HTMLDivElement, CardProps>(
   ({ className, ...props }, ref) => (

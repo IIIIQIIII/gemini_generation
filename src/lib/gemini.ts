@@ -1,5 +1,21 @@
 import { GoogleGenAI } from "@google/genai";
 
+// Type definitions for better type safety
+interface VideoGenerationConfig {
+  aspectRatio?: '16:9' | '9:16';
+  negativePrompt?: string;
+  personGeneration?: 'allow_all' | 'allow_adult' | 'dont_allow';
+}
+
+interface VideoGenerationRequest {
+  model: string;
+  prompt: string;
+  config?: VideoGenerationConfig;
+}
+
+// Use unknown for complex third-party types
+type VideoOperation = unknown;
+
 // Initialize the Google GenAI client with the API key
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
@@ -137,24 +153,21 @@ export async function analyzeYouTubeVideo(prompt: string, youtubeUrl: string): P
 export async function generateVideo(
   prompt: string, 
   model: 'veo-3.0-fast-generate-preview' | 'veo-2.0-generate-001' = 'veo-3.0-fast-generate-preview',
-  config?: {
-    aspectRatio?: '16:9' | '9:16';
-    negativePrompt?: string;
-    personGeneration?: 'allow_all' | 'allow_adult' | 'dont_allow';
-  }
-): Promise<any> {
+  config?: VideoGenerationConfig
+): Promise<VideoOperation> {
   try {
-    const requestConfig: any = {
+    const requestConfig: VideoGenerationRequest = {
       model,
       prompt,
     };
 
     // Add optional configuration
     if (config) {
-      requestConfig.config = {};
-      if (config.aspectRatio) requestConfig.config.aspectRatio = config.aspectRatio;
-      if (config.negativePrompt) requestConfig.config.negativePrompt = config.negativePrompt;
-      if (config.personGeneration) requestConfig.config.personGeneration = config.personGeneration;
+      requestConfig.config = {
+        aspectRatio: config.aspectRatio,
+        negativePrompt: config.negativePrompt,
+        personGeneration: config.personGeneration,
+      };
     }
 
     const operation = await genAI.models.generateVideos(requestConfig);
@@ -163,7 +176,7 @@ export async function generateVideo(
       throw new Error("Failed to start video generation operation");
     }
     
-    return operation;
+    return operation as VideoOperation;
   } catch (error) {
     console.error("Error generating video:", error);
     throw new Error(`Failed to generate video: ${error instanceof Error ? error.message : String(error)}`);
@@ -171,10 +184,10 @@ export async function generateVideo(
 }
 
 // Poll video generation operation status
-export async function getVideoOperation(operation: any): Promise<any> {
+export async function getVideoOperation(operation: VideoOperation): Promise<VideoOperation> {
   try {
-    const updatedOperation = await genAI.operations.getVideosOperation({ operation });
-    return updatedOperation;
+    const updatedOperation = await genAI.operations.getVideosOperation({ operation: operation as never });
+    return updatedOperation as VideoOperation;
   } catch (error) {
     console.error("Error getting video operation:", error);
     throw new Error(`Failed to get video operation: ${error instanceof Error ? error.message : String(error)}`);

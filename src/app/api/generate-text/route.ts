@@ -1,12 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import { env } from '~/env';
 
 const genAI = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 
+interface GenerateTextRequest {
+  prompt: string;
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { prompt } = await request.json();
+    const { prompt }: GenerateTextRequest = await request.json() as GenerateTextRequest;
 
     if (!prompt) {
       return NextResponse.json(

@@ -1,12 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import { env } from '~/env';
 
 const genAI = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 
+interface EditImageRequest {
+  prompt: string;
+  imageData: string;
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { prompt, imageData } = await request.json();
+    const { prompt, imageData }: EditImageRequest = await request.json() as EditImageRequest;
 
     if (!prompt || !imageData) {
       return NextResponse.json(
