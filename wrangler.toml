@@ -4,8 +4,5 @@ compatibility_date = "2025-08-29"
 # Use the Next.js adapter for Pages
 pages_build_output_dir = ".next"
 
-[env.production.vars]
-GEMINI_API_KEY = "AIzaSyBHzD28NmEtpS1g2lBTYKI_ZuGH2DHBENw"
-
-[env.preview.vars]
-GEMINI_API_KEY = "AIzaSyBHzD28NmEtpS1g2lBTYKI_ZuGH2DHBENw"
+# Environment variables should be configured in Cloudflare Pages dashboard
+# Never put API keys in this file as it will be public on GitHub!
