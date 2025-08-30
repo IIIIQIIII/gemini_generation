@@ -5,6 +5,7 @@ import { Header } from '~/components/layout/Header';
 import { TabNavigation } from '~/components/layout/TabNavigation';
 import { TextGenerator } from '~/components/features/TextGenerator';
 import { ImageGenerator } from '~/components/features/ImageGenerator';
+import { ImageAnalyzer } from '~/components/features/ImageAnalyzer';
 import { VideoGenerator } from '~/components/features/VideoGenerator';
 import { VideoAnalyzer } from '~/components/features/VideoAnalyzer';
 import { ApiKeyInput } from '~/components/ui/ApiKeyInput';
@@ -31,6 +32,8 @@ export default function Home() {
         return <TextGenerator />;
       case 'image':
         return <ImageGenerator />;
+      case 'image-analyze':
+        return <ImageAnalyzer />;
       case 'video-generate':
         return <VideoGenerator />;
       case 'video':

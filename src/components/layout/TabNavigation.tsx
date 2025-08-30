@@ -12,6 +12,7 @@ export function TabNavigation({ activeTab, onTabChange }: TabNavigationProps) {
   const tabs = [
     { id: 'text', label: '文本生成', icon: '📝' },
     { id: 'image', label: '图片生成', icon: '🎨' },
+    { id: 'image-analyze', label: '图片分析', icon: '🔍' },
     { id: 'video-generate', label: '视频生成', icon: '🎬' },
     { id: 'video', label: '视频分析', icon: '📹' },
   ];
