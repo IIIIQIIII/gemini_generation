@@ -2,15 +2,14 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import { env } from '~/env';
 
-const genAI = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
-
 interface GenerateTextRequest {
   prompt: string;
+  apiKey?: string;
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { prompt }: GenerateTextRequest = await request.json() as GenerateTextRequest;
+    const { prompt, apiKey: userApiKey }: GenerateTextRequest = await request.json() as GenerateTextRequest;
 
     if (!prompt) {
       return NextResponse.json(
@@ -18,6 +17,14 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Use user-provided API key first, fallback to environment variable
+    const apiKey = userApiKey || env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: 'API Key 未配置，请提供有效的API Key' }, { status: 400 });
+    }
+
+    const genAI = new GoogleGenAI({ apiKey });
 
     const response = await genAI.models.generateContent({
       model: 'gemini-2.5-flash',

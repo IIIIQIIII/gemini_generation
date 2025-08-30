@@ -5,7 +5,7 @@ import { env } from '~/env.js';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { prompt, imageData, imageUrl, analysisType = 'general' } = body;
+    const { prompt, imageData, imageUrl, analysisType = 'general', apiKey: userApiKey } = body;
 
     if (!prompt?.trim()) {
       return Response.json({ error: '请提供分析指令' }, { status: 400 });
@@ -15,9 +15,10 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: '请提供图片数据或图片链接' }, { status: 400 });
     }
 
-    const apiKey = env.GEMINI_API_KEY;
+    // Use user-provided API key first, fallback to environment variable
+    const apiKey = userApiKey || env.GEMINI_API_KEY;
     if (!apiKey) {
-      return Response.json({ error: 'GEMINI_API_KEY 未配置' }, { status: 500 });
+      return Response.json({ error: 'API Key 未配置，请提供有效的API Key' }, { status: 400 });
     }
 
     const genAI = new GoogleGenAI({ apiKey });
@@ -69,9 +70,63 @@ export async function POST(request: NextRequest) {
     // Add analysis-specific prompts
     let finalPrompt = prompt;
     if (analysisType === 'detection') {
-      finalPrompt = `${prompt}\n\nDetect all prominent objects in the image. For each object, provide the bounding box coordinates in the format [ymin, xmin, ymax, xmax] normalized to 0-1000, along with the object label. Output as JSON format with "objects" array containing "label" and "box_2d" fields.`;
+      finalPrompt = `${prompt}
+
+请按照以下要求进行物体检测：
+1. 根据上述指令，专门检测和识别相关的物体或区域
+2. 为每个检测到的物体提供边界框坐标，格式为 [ymin, xmin, ymax, xmax]，坐标值标准化到 0-1000 范围
+3. 只检测与分析指令相关的物体，不需要检测图片中的所有物体
+4. 必须严格按照以下JSON格式输出：
+
+{
+  "objects": [
+    {
+      "label": "物体名称",
+      "box_2d": [ymin, xmin, ymax, xmax],
+      "confidence": 0.95
+    }
+  ]
+}
+
+请确保输出是有效的JSON格式，不要包含任何其他文字。专注于用户指令中要求的特定物体或区域。`;
     } else if (analysisType === 'segmentation') {
-      finalPrompt = `${prompt}\n\nProvide segmentation masks for the objects in the image. Output as JSON format with segmentation data including bounding boxes, labels, and masks.`;
+      finalPrompt = `${prompt}
+
+请按照以下要求进行精细的语义分割分析：
+
+1. **目标导向分割** - 根据上述指令，专门分割和识别相关的区域和对象
+2. **精细化分割** - 将相关对象分割成更细致的部分，重点关注指令中提到的特定区域
+3. **区域标注** - 为每个分割区域提供精确的边界框坐标 [ymin, xmin, ymax, xmax]，标准化到 0-1000 范围
+
+分割原则：
+- 专注于用户指令中要求的特定对象或区域
+- 将相关对象分解为有意义的部分
+- 区分不同材质、颜色或功能的区域
+- 只分割与分析指令相关的区域，不需要分割整个图片
+
+严格按照以下JSON格式输出：
+
+{
+  "objects": [
+    {
+      "label": "与指令相关的主要对象名称",
+      "box_2d": [ymin, xmin, ymax, xmax],
+      "confidence": 0.95
+    }
+  ],
+  "segments": [
+    {
+      "label": "具体分割区域名称（重点关注指令中提到的区域）",
+      "box_2d": [ymin, xmin, ymax, xmax],
+      "confidence": 0.90
+    }
+  ]
+}
+
+请确保：
+- 只输出与用户指令相关的对象和分割区域
+- segments数组专注于指令中要求的特定部分
+- 输出纯JSON格式，无其他文字`;
     }
 
     contents.push({ text: finalPrompt });

@@ -16,6 +16,13 @@ export function TextGenerator() {
       return;
     }
 
+    // Get API key from localStorage
+    const apiKey = localStorage.getItem('gemini_api_key');
+    if (!apiKey) {
+      setError('请先设置API Key');
+      return;
+    }
+
     setLoading(true);
     setError('');
     setResult('');
@@ -26,7 +33,7 @@ export function TextGenerator() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt, apiKey }),
       });
 
       const data = await response.json();

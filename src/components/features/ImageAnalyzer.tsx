@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import { Button } from '~/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/Card';
 import { Input } from '~/components/ui/Input';
+import { ImageVisualization } from '~/components/ui/ImageVisualization';
 
 export function ImageAnalyzer() {
   const [prompt, setPrompt] = useState('');
@@ -73,6 +74,13 @@ export function ImageAnalyzer() {
       return;
     }
 
+    // Get API key from localStorage
+    const apiKey = localStorage.getItem('gemini_api_key');
+    if (!apiKey) {
+      setError('请先设置API Key');
+      return;
+    }
+
     setLoading(true);
     setError('');
     setResult('');
@@ -80,7 +88,8 @@ export function ImageAnalyzer() {
     try {
       const requestBody: any = { 
         prompt,
-        analysisType
+        analysisType,
+        apiKey
       };
       
       if (analysisMode === 'upload' && uploadedImage) {
@@ -175,7 +184,8 @@ export function ImageAnalyzer() {
       <CardHeader>
         <CardTitle className="text-xl font-semibold text-gray-900">图片分析</CardTitle>
         <CardDescription>
-          使用 Gemini AI 分析图片内容，支持图片描述、物体检测和语义分割
+          使用 Gemini AI 分析图片内容，支持图片描述、物体检测和语义分割。
+          {analysisType !== 'general' && ' 检测和分割结果将以可视化方式展示。'}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -342,28 +352,40 @@ export function ImageAnalyzer() {
 
         {/* Results Display */}
         {result && (
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">分析结果</label>
-            <div className="p-4 rounded-lg bg-gray-50 border border-gray-200">
-              <pre className="text-sm text-gray-900 whitespace-pre-wrap font-mono">
-                {formatResult(result)}
-              </pre>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => navigator.clipboard.writeText(result)}
-              >
-                复制结果
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={resetForm}
-              >
-                重新分析
-              </Button>
+          <div className="space-y-4">
+            {/* Image Visualization */}
+            {imagePreview && (
+              <ImageVisualization
+                imageUrl={imagePreview}
+                result={result}
+                analysisType={analysisType}
+              />
+            )}
+            
+            {/* Raw Results */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">原始分析结果</label>
+              <div className="p-4 rounded-lg bg-gray-50 border border-gray-200">
+                <pre className="text-sm text-gray-900 whitespace-pre-wrap font-mono max-h-60 overflow-y-auto">
+                  {formatResult(result)}
+                </pre>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => navigator.clipboard.writeText(result)}
+                >
+                  复制结果
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={resetForm}
+                >
+                  重新分析
+                </Button>
+              </div>
             </div>
           </div>
         )}
