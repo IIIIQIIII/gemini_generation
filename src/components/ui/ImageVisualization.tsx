@@ -8,27 +8,14 @@ interface DetectionObject {
   confidence?: number;
 }
 
-interface SegmentationMask {
-  label: string;
-  box_2d?: [number, number, number, number];
-  mask?: string; // base64 encoded mask
-  confidence?: number;
-}
-
 interface DetectionResult {
   objects: DetectionObject[];
-}
-
-interface SegmentationResult {
-  segments?: SegmentationMask[];
-  masks?: SegmentationMask[];
-  objects?: DetectionObject[];
 }
 
 interface ImageVisualizationProps {
   imageUrl: string;
   result: string;
-  analysisType: 'general' | 'detection' | 'segmentation';
+  analysisType: 'general' | 'detection';
 }
 
 const COLORS = [
@@ -41,7 +28,7 @@ export function ImageVisualization({ imageUrl, result, analysisType }: ImageVisu
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
-  const [parsedResult, setParsedResult] = useState<DetectionResult | SegmentationResult | null>(null);
+  const [parsedResult, setParsedResult] = useState<DetectionResult | null>(null);
   const [redrawTrigger, setRedrawTrigger] = useState(0);
 
   // Add resize listener to redraw when window size changes
@@ -58,8 +45,7 @@ export function ImageVisualization({ imageUrl, result, analysisType }: ImageVisu
     ctx: CanvasRenderingContext2D,
     objects: DetectionObject[],
     canvasWidth: number,
-    canvasHeight: number,
-    isForSegmentation: boolean = false
+    canvasHeight: number
   ) => {
     objects.forEach((obj, index) => {
       const color = COLORS[index % COLORS.length] || '#FF6B6B';
@@ -71,108 +57,46 @@ export function ImageVisualization({ imageUrl, result, analysisType }: ImageVisu
       const width = ((xmax - xmin) / 1000) * canvasWidth;
       const height = ((ymax - ymin) / 1000) * canvasHeight;
 
-      if (isForSegmentation) {
-        // For segmentation, draw lighter outline boxes for objects
-        ctx.strokeStyle = color + '60';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([5, 5]); // Dashed line
-        ctx.strokeRect(x, y, width, height);
-        ctx.setLineDash([]); // Reset line dash
-        
-        // Smaller, less prominent label for segmentation objects
-        const label = `${obj.label}`;
-        ctx.font = '12px Arial';
-        ctx.fillStyle = color + '80';
-        ctx.fillText(label, x + 2, y - 2);
-      } else {
-        // For detection, draw solid boxes
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 3;
-        ctx.strokeRect(x, y, width, height);
+      // Draw solid boxes for detection
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x, y, width, height);
 
-        // Draw label background
-        const label = obj.confidence 
-          ? `${obj.label} (${(obj.confidence * 100).toFixed(1)}%)`
-          : obj.label;
-        
-        ctx.font = 'bold 14px Arial';
-        const textMetrics = ctx.measureText(label);
-        const textWidth = textMetrics.width;
-        const textHeight = 18;
-        const padding = 6;
+      // Draw label background
+      const label = obj.confidence 
+        ? `${obj.label} (${(obj.confidence * 100).toFixed(1)}%)`
+        : obj.label;
+      
+      ctx.font = 'bold 14px Arial';
+      const textMetrics = ctx.measureText(label);
+      const textWidth = textMetrics.width;
+      const textHeight = 18;
+      const padding = 6;
 
-        // Calculate label position - place it above the box, or below if not enough space
-        let labelY = y - textHeight - padding;
-        if (labelY < 0) {
-          labelY = y + height + textHeight + padding;
-        }
-
-        // Draw label background with border
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-        ctx.fillRect(x, labelY - textHeight, textWidth + padding * 2, textHeight + padding);
-        
-        // Draw label border
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x, labelY - textHeight, textWidth + padding * 2, textHeight + padding);
-
-        // Draw label text
-        ctx.fillStyle = color;
-        ctx.fillText(label, x + padding, labelY - 2);
+      // Calculate label position - place it above the box, or below if not enough space
+      let labelY = y - textHeight - padding;
+      if (labelY < 0) {
+        labelY = y + height + textHeight + padding;
       }
-    });
-  }, []);
 
-  const drawSegmentationMasks = useCallback((
-    ctx: CanvasRenderingContext2D,
-    masks: SegmentationMask[],
-    canvasWidth: number,
-    canvasHeight: number
-  ) => {
-    masks.forEach((mask, index) => {
-      const color = COLORS[index % COLORS.length] || '#FF6B6B';
+      // Draw label background with border
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.fillRect(x, labelY - textHeight, textWidth + padding * 2, textHeight + padding);
+      
+      // Draw label border
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, labelY - textHeight, textWidth + padding * 2, textHeight + padding);
 
-      // If there's a bounding box, draw it
-      if (mask.box_2d) {
-        const [ymin, xmin, ymax, xmax] = mask.box_2d;
-        const x = (xmin / 1000) * canvasWidth;
-        const y = (ymin / 1000) * canvasHeight;
-        const width = ((xmax - xmin) / 1000) * canvasWidth;
-        const height = ((ymax - ymin) / 1000) * canvasHeight;
-
-        // Draw more visible filled rectangle for segmentation
-        ctx.fillStyle = color + '60'; // More visible alpha transparency
-        ctx.fillRect(x, y, width, height);
-
-        // Draw thicker border for segments
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 3;
-        ctx.strokeRect(x, y, width, height);
-
-        // Draw prominent label with background for segments
-        const label = mask.confidence 
-          ? `${mask.label} (${(mask.confidence * 100).toFixed(1)}%)`
-          : mask.label;
-        
-        ctx.font = 'bold 14px Arial';
-        const textMetrics = ctx.measureText(label);
-        const textWidth = textMetrics.width;
-        const textHeight = 16;
-        
-        // Draw label background
-        ctx.fillStyle = color;
-        ctx.fillRect(x + 3, y + 3, textWidth + 8, textHeight + 4);
-        
-        // Draw label text
-        ctx.fillStyle = 'white';
-        ctx.fillText(label, x + 7, y + 16);
-      }
+      // Draw label text
+      ctx.fillStyle = color;
+      ctx.fillText(label, x + padding, labelY - 2);
     });
   }, []);
 
   // Parse JSON result
   useEffect(() => {
-    if (analysisType === 'detection' || analysisType === 'segmentation') {
+    if (analysisType === 'detection') {
       try {
         // Try to extract JSON from the result text
         const jsonMatch = result.match(/\{[\s\S]*\}/);
@@ -221,25 +145,7 @@ export function ImageVisualization({ imageUrl, result, analysisType }: ImageVisu
     if (analysisType === 'detection' && 'objects' in parsedResult && parsedResult.objects) {
       drawDetectionBoxes(ctx, parsedResult.objects, canvas.width, canvas.height);
     }
-
-    // Draw segmentation results
-    if (analysisType === 'segmentation') {
-      const segResult = parsedResult as SegmentationResult;
-      
-      // First draw objects as outlined boxes (lighter)
-      if ('objects' in parsedResult && parsedResult.objects) {
-        drawDetectionBoxes(ctx, parsedResult.objects, canvas.width, canvas.height, true);
-      }
-      
-      // Then draw segments as filled areas (more prominent)
-      if (segResult.segments) {
-        drawSegmentationMasks(ctx, segResult.segments, canvas.width, canvas.height);
-      }
-      if (segResult.masks) {
-        drawSegmentationMasks(ctx, segResult.masks, canvas.width, canvas.height);
-      }
-    }
-  }, [imageLoaded, parsedResult, analysisType, redrawTrigger, drawDetectionBoxes, drawSegmentationMasks]);
+  }, [imageLoaded, parsedResult, analysisType, redrawTrigger, drawDetectionBoxes]);
 
   const handleImageLoad = () => {
     setImageLoaded(true);
@@ -313,13 +219,8 @@ export function ImageVisualization({ imageUrl, result, analysisType }: ImageVisu
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <label className="text-sm font-medium text-gray-700">
-          可视化结果 ({analysisType === 'detection' ? '物体检测' : '语义分割'})
+          可视化结果 (物体检测)
         </label>
-        {analysisType === 'segmentation' && (
-          <div className="text-xs text-gray-500">
-            虚线框：整体对象 | 实心区域：分割部件
-          </div>
-        )}
       </div>
       <div className="border rounded-lg p-4 bg-gray-50 relative">
         <div className="relative inline-block">
@@ -365,13 +266,6 @@ export function ImageVisualization({ imageUrl, result, analysisType }: ImageVisu
               <p className="text-sm text-blue-800">
                 检测到 {parsedResult.objects.length} 个对象
               </p>
-            )}
-            {analysisType === 'segmentation' && (
-              <div className="text-sm text-blue-800">
-                {parsedResult.objects && <p>边界框: {parsedResult.objects.length} 个</p>}
-                {(parsedResult as SegmentationResult).segments && <p>分割区域: {(parsedResult as SegmentationResult).segments!.length} 个</p>}
-                {(parsedResult as SegmentationResult).masks && <p>掩码区域: {(parsedResult as SegmentationResult).masks!.length} 个</p>}
-              </div>
             )}
           </div>
         </div>

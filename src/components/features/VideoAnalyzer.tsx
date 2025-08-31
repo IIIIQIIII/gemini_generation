@@ -85,6 +85,39 @@ export function VideoAnalyzer() {
     }
   };
 
+  const copyToClipboard = async (text: string) => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        // 可以添加成功提示
+        console.log('内容已复制到剪贴板');
+      } else {
+        // 回退方案：使用传统的文本选择方式
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        try {
+          document.execCommand('copy');
+          console.log('内容已复制到剪贴板（回退方案）');
+        } catch (err) {
+          console.error('复制失败:', err);
+          setError('复制失败，请手动选择文本复制');
+        }
+        
+        document.body.removeChild(textArea);
+      }
+    } catch (err) {
+      console.error('复制到剪贴板失败:', err);
+      setError('复制失败，请手动选择文本复制');
+    }
+  };
+
   const resetForm = () => {
     setUploadedVideo(null);
     setYoutubeUrl('');
@@ -231,7 +264,7 @@ export function VideoAnalyzer() {
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => navigator.clipboard.writeText(result)}
+                onClick={() => copyToClipboard(result)}
               >
                 复制结果
               </Button>

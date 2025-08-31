@@ -12,7 +12,7 @@ export function ImageAnalyzer() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [analysisMode, setAnalysisMode] = useState<'upload' | 'url'>('upload');
-  const [analysisType, setAnalysisType] = useState<'general' | 'detection' | 'segmentation'>('general');
+  const [analysisType, setAnalysisType] = useState<'general' | 'detection'>('general');
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -149,26 +149,16 @@ export function ImageAnalyzer() {
       '识别图片中的食物和饮品'
     ];
 
-    const segmentationPrompts = [
-      '分割图片中的主要对象',
-      '分离前景和背景',
-      '分割图片中的人物轮廓',
-      '分离图片中的不同材质区域',
-      '提取图片中的特定物体轮廓'
-    ];
-
     switch (analysisType) {
       case 'detection':
         return detectionPrompts;
-      case 'segmentation':
-        return segmentationPrompts;
       default:
         return basePrompts;
     }
   };
 
   const formatResult = (text: string) => {
-    if (analysisType === 'detection' || analysisType === 'segmentation') {
+    if (analysisType === 'detection') {
       try {
         const parsed = JSON.parse(text);
         return JSON.stringify(parsed, null, 2);
@@ -184,8 +174,8 @@ export function ImageAnalyzer() {
       <CardHeader>
         <CardTitle className="text-xl font-semibold text-gray-900">图片分析</CardTitle>
         <CardDescription>
-          使用 Gemini AI 分析图片内容，支持图片描述、物体检测和语义分割。
-          {analysisType !== 'general' && ' 检测和分割结果将以可视化方式展示。'}
+          使用 Gemini AI 分析图片内容，支持图片描述和物体检测。
+          {analysisType !== 'general' && ' 检测结果将以可视化方式展示。'}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -207,13 +197,6 @@ export function ImageAnalyzer() {
               size="sm"
             >
               🎯 物体检测
-            </Button>
-            <Button
-              variant={analysisType === 'segmentation' ? "primary" : "secondary"}
-              onClick={() => setAnalysisType('segmentation')}
-              size="sm"
-            >
-              ✂️ 语义分割
             </Button>
           </div>
         </div>

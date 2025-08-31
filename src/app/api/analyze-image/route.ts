@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     let model = 'gemini-2.5-flash';
     
     // Choose model based on analysis type (all use the same model for now)
-    if (analysisType === 'detection' || analysisType === 'segmentation') {
+    if (analysisType === 'detection') {
       model = 'gemini-2.5-flash';
     }
 
@@ -89,44 +89,6 @@ export async function POST(request: NextRequest) {
 }
 
 请确保输出是有效的JSON格式，不要包含任何其他文字。专注于用户指令中要求的特定物体或区域。`;
-    } else if (analysisType === 'segmentation') {
-      finalPrompt = `${prompt}
-
-请按照以下要求进行精细的语义分割分析：
-
-1. **目标导向分割** - 根据上述指令，专门分割和识别相关的区域和对象
-2. **精细化分割** - 将相关对象分割成更细致的部分，重点关注指令中提到的特定区域
-3. **区域标注** - 为每个分割区域提供精确的边界框坐标 [ymin, xmin, ymax, xmax]，标准化到 0-1000 范围
-
-分割原则：
-- 专注于用户指令中要求的特定对象或区域
-- 将相关对象分解为有意义的部分
-- 区分不同材质、颜色或功能的区域
-- 只分割与分析指令相关的区域，不需要分割整个图片
-
-严格按照以下JSON格式输出：
-
-{
-  "objects": [
-    {
-      "label": "与指令相关的主要对象名称",
-      "box_2d": [ymin, xmin, ymax, xmax],
-      "confidence": 0.95
-    }
-  ],
-  "segments": [
-    {
-      "label": "具体分割区域名称（重点关注指令中提到的区域）",
-      "box_2d": [ymin, xmin, ymax, xmax],
-      "confidence": 0.90
-    }
-  ]
-}
-
-请确保：
-- 只输出与用户指令相关的对象和分割区域
-- segments数组专注于指令中要求的特定部分
-- 输出纯JSON格式，无其他文字`;
     }
 
     contents.push({ text: finalPrompt });
