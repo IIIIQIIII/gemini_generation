@@ -5,6 +5,51 @@ import { Button } from '~/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/Card';
 import { Input } from '~/components/ui/Input';
 
+// Robust clipboard copy utility function
+const copyToClipboard = async (text: string): Promise<{ success: boolean; message: string }> => {
+  // Check if we're in a browser environment
+  if (typeof window === 'undefined') {
+    return { success: false, message: '不支持服务器端复制' };
+  }
+
+  // Method 1: Modern Clipboard API
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return { success: true, message: '复制成功！' };
+    } catch (err) {
+      console.warn('Clipboard API failed:', err);
+      // Fall through to legacy method
+    }
+  }
+
+  // Method 2: Legacy execCommand fallback
+  try {
+    // Create a temporary textarea element
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    textarea.style.left = '-9999px';
+    
+    document.body.appendChild(textarea);
+    textarea.select();
+    textarea.setSelectionRange(0, 99999); // For mobile devices
+    
+    const successful = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    
+    if (successful) {
+      return { success: true, message: '复制成功！' };
+    } else {
+      return { success: false, message: '复制失败，请手动复制' };
+    }
+  } catch (err) {
+    console.error('Legacy copy method failed:', err);
+    return { success: false, message: '复制功能不可用，请手动复制' };
+  }
+};
+
 // 预定义的提示词模板
 const PROMPT_TEMPLATES = [
   { id: 'free-chat', label: 'AI对话模式', template: '' },
@@ -21,6 +66,7 @@ export function TextGenerator() {
   const [result, setResult] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [copyStatus, setCopyStatus] = useState<{ message: string; type: 'success' | 'error' | '' }>({ message: '', type: '' });
 
   // 生成最终的提示词
   const generateFinalPrompt = () => {
@@ -78,6 +124,22 @@ export function TextGenerator() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 处理复制功能
+  const handleCopy = async () => {
+    setCopyStatus({ message: '', type: '' }); // 清除之前的状态
+    
+    const copyResult = await copyToClipboard(result);
+    setCopyStatus({
+      message: copyResult.message,
+      type: copyResult.success ? 'success' : 'error'
+    });
+
+    // 3秒后清除状态消息
+    setTimeout(() => {
+      setCopyStatus({ message: '', type: '' });
+    }, 3000);
   };
 
   // 检查是否可以生成
@@ -167,13 +229,20 @@ export function TextGenerator() {
             <div className="p-4 rounded-lg bg-gray-50 border border-gray-200">
               <p className="text-sm text-gray-900 whitespace-pre-wrap">{result}</p>
             </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => navigator.clipboard.writeText(result)}
-            >
-              复制文本
-            </Button>
+            <div className="flex items-center space-x-3">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleCopy}
+              >
+                复制文本
+              </Button>
+              {copyStatus.message && (
+                <span className={`text-sm ${copyStatus.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                  {copyStatus.message}
+                </span>
+              )}
+            </div>
           </div>
         )}
       </CardContent>
