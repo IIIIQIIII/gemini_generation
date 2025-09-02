@@ -603,25 +603,84 @@ export function VideoGenerator() {
                 controls
                 className="w-full h-auto rounded-lg"
                 style={{ maxHeight: '400px' }}
+                preload="metadata"
                 onError={(e) => {
-                  console.log('Video playback error, trying alternatives...');
-                  // If proxy fails, show a message with alternatives
-                  const videoElement = e.target as HTMLVideoElement;
-                  videoElement.style.display = 'none';
+                  const target = e.target as HTMLVideoElement;
+                  const errorDetails = {
+                    error: target.error,
+                    networkState: target.networkState,
+                    readyState: target.readyState,
+                    videoSrc: target.src
+                  };
+                  console.error('Video playback error details:', errorDetails);
                   
-                  // Create error message
-                  const errorDiv = document.createElement('div');
-                  errorDiv.className = 'flex flex-col items-center justify-center h-48 text-white';
-                  errorDiv.innerHTML = `
-                    <div class="text-center space-y-2">
-                      <p class="text-sm">⚠️ 视频播放遇到问题</p>
-                      <p class="text-xs opacity-75">可能是网络连接问题</p>
-                    </div>
-                  `;
-                  
-                  if (videoElement.parentNode) {
-                    videoElement.parentNode.appendChild(errorDiv);
+                  // Give more specific error messages
+                  let errorMessage = '视频播放遇到问题。';
+                  if (target.error) {
+                    switch (target.error.code) {
+                      case MediaError.MEDIA_ERR_ABORTED:
+                        errorMessage += ' 播放被中止，请重试。';
+                        break;
+                      case MediaError.MEDIA_ERR_NETWORK:
+                        errorMessage += ' 网络错误，请检查网络连接。';
+                        break;
+                      case MediaError.MEDIA_ERR_DECODE:
+                        errorMessage += ' 视频解码错误，请尝试下载视频。';
+                        break;
+                      case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+                        errorMessage += ' 视频格式不支持，请尝试下载视频。';
+                        break;
+                      default:
+                        errorMessage += ' 未知错误，请尝试下载或在新窗口打开。';
+                    }
                   }
+                  
+                  // Only show error after a brief delay to avoid false positives during loading
+                  setTimeout(() => {
+                    if (target.error) {
+                      setError(errorMessage);
+                    }
+                  }, 1000);
+                }}
+                onLoadStart={() => {
+                  console.log('Video started loading...');
+                  setError(''); // Clear errors when starting to load
+                }}
+                onLoadedMetadata={() => {
+                  console.log('Video metadata loaded');
+                }}
+                onLoadedData={() => {
+                  console.log('Video data loaded successfully');
+                  setError(''); // Clear any previous errors
+                }}
+                onCanPlay={() => {
+                  console.log('Video can start playing');
+                  setError(''); // Clear any previous errors
+                }}
+                onCanPlayThrough={() => {
+                  console.log('Video can play through without stopping');
+                }}
+                onWaiting={() => {
+                  console.log('Video is waiting for data...');
+                }}
+                onSeeking={() => {
+                  console.log('Video is seeking...');
+                }}
+                onSeeked={() => {
+                  console.log('Video seek completed');
+                }}
+                onPlaying={() => {
+                  console.log('Video is playing');
+                  setError(''); // Clear any errors when successfully playing
+                }}
+                onPause={() => {
+                  console.log('Video paused');
+                }}
+                onStalled={() => {
+                  console.log('Video stalled, waiting for data...');
+                }}
+                onSuspend={() => {
+                  console.log('Video loading suspended');
                 }}
               >
                 您的浏览器不支持视频播放。

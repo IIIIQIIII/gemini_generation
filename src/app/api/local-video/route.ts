@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readFile } from 'fs/promises';
-import { existsSync } from 'fs';
-import path from 'path';
+import { existsSync, statSync, createReadStream } from 'fs';
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,21 +32,66 @@ export async function GET(request: NextRequest) {
     console.log(`Serving local video: ${videoPath}`);
 
     try {
-      // Read the video file
-      const videoBuffer = await readFile(videoPath);
+      const stats = statSync(videoPath);
+      const fileSize = stats.size;
+      const range = request.headers.get('range');
 
-      // Return the video with proper headers
-      return new NextResponse(videoBuffer as any, {
+      // Prepare common headers
+      const commonHeaders = {
+        'Content-Type': 'video/mp4',
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'public, max-age=3600',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+        'Access-Control-Allow-Headers': 'Range, Content-Type',
+        'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
+      };
+
+      // Handle Range requests for video streaming
+      if (range && typeof range === 'string') {
+        // Parse range header
+        const parts = range.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0] || "0", 10);
+        const end = parts[1] && parts[1] !== "" ? parseInt(parts[1], 10) : Math.min(start + 1024 * 1024, fileSize - 1); // Default 1MB chunks
+        const chunkSize = (end - start) + 1;
+
+        console.log(`Range request: ${start}-${end}/${fileSize} (${chunkSize} bytes)`);
+
+        // Create readable stream for the range
+        const stream = createReadStream(videoPath, { start, end });
+        
+        // Convert stream to buffer (Next.js requires buffer for response)
+        const chunks: Buffer[] = [];
+        for await (const chunk of stream) {
+          chunks.push(chunk);
+        }
+        const buffer = Buffer.concat(chunks);
+
+        return new NextResponse(buffer, {
+          status: 206, // Partial Content
+          headers: {
+            ...commonHeaders,
+            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+            'Content-Length': chunkSize.toString(),
+          },
+        });
+      }
+
+      // No range request - return entire file
+      const stream = createReadStream(videoPath);
+      const chunks: Buffer[] = [];
+      
+      for await (const chunk of stream) {
+        chunks.push(chunk);
+      }
+      
+      const buffer = Buffer.concat(chunks);
+
+      return new NextResponse(buffer, {
         status: 200,
         headers: {
-          'Content-Type': 'video/mp4',
-          'Content-Length': videoBuffer.length.toString(),
-          'Cache-Control': 'public, max-age=3600',
-          'Accept-Ranges': 'bytes',
-          // Add CORS headers to prevent issues
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET',
-          'Access-Control-Allow-Headers': 'Range',
+          ...commonHeaders,
+          'Content-Length': fileSize.toString(),
         },
       });
 
@@ -69,4 +112,17 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// Handle OPTIONS requests for CORS
+export async function OPTIONS(request: NextRequest) {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+      'Access-Control-Allow-Headers': 'Range, Content-Type',
+      'Access-Control-Max-Age': '86400',
+    },
+  });
 }
