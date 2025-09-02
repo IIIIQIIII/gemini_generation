@@ -130,6 +130,7 @@ export function VideoAnalyzer() {
   };
 
   const getPresetPrompts = () => [
+    'Please provide a paragraph describing this video.',
     '请总结这个视频的主要内容',
     '描述视频中的关键场景和人物',
     '提取视频中的文字信息',
