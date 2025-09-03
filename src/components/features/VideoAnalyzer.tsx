@@ -12,6 +12,7 @@ export function VideoAnalyzer() {
   const [analysisMode, setAnalysisMode] = useState<'upload' | 'youtube'>('upload');
   const [uploadedVideo, setUploadedVideo] = useState<string | null>(null);
   const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [copySuccess, setCopySuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -89,8 +90,8 @@ export function VideoAnalyzer() {
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(text);
-        // 可以添加成功提示
-        console.log('内容已复制到剪贴板');
+        setCopySuccess(true);
+        setTimeout(() => setCopySuccess(false), 2000); // 2秒后隐藏提示
       } else {
         // 回退方案：使用传统的文本选择方式
         const textArea = document.createElement('textarea');
@@ -104,7 +105,8 @@ export function VideoAnalyzer() {
         
         try {
           document.execCommand('copy');
-          console.log('内容已复制到剪贴板（回退方案）');
+          setCopySuccess(true);
+          setTimeout(() => setCopySuccess(false), 2000); // 2秒后隐藏提示
         } catch (err) {
           console.error('复制失败:', err);
           setError('复制失败，请手动选择文本复制');
@@ -137,6 +139,31 @@ export function VideoAnalyzer() {
     '分析视频的情感基调',
     '列出视频中提到的重要观点'
   ];
+
+  // 专用提示词模板
+  const AUDIO_VIDEO_DESCRIPTION_PROMPT = `Your task is to strictly adhere to the following format and rules to generate a description for a video.
+
+**Core Formatting Rules:**
+1.  **Structure:** The description must be divided into two main paragraphs. The first paragraph describes the visual content, and the second describes the audio and dialogue.
+2.  **Dialogue Handling (Most Important):** If the dialogue in the video is not in English, you must follow these rules:
+    *   First, specify the language of the dialogue, for example, \`...says in Chinese...\` or \`...exchange in Chinese.\`
+    *   Next, describe the tone of voice, such as \`...in a relaxed and cheerful tone:\`.
+    *   Then, **provide only the English translation of the dialogue**, enclosed in quotation marks.
+    *   **Strictly Prohibited:** **Do not include any non-English characters (e.g., Chinese characters), pinyin, or any form of transliteration in the final output.** The only representation of the dialogue should be its English translation.
+
+Please strictly refer to the example below, which perfectly demonstrates the rules above.
+
+\`\`\`Reference Video Prompt Format Example
+A highly realistic, photorealistic macaque monkey, wearing a vibrant green Hawaiian floral shirt and a green baseball cap, is vlogging in front of a beautiful waterfall in a lush, dense jungle. The shot is a dynamic first-person POV (Point of View) from a camera held by the monkey's outstretched, hairy arm, giving it a GoPro or action camera feel with a wide-angle lens. The monkey stands by a clear, shallow stream.
+
+The monkey looks directly into the lens, talking animatedly with a cheerful expression. Its mouth movements are perfectly synchronized with its speech.
+
+For the audio and dialogue, the model should generate synchronized audio where the monkey says in Chinese, in a relaxed and cheerful tone: "Hey guys, it's so much nicer in the mountains! The temperature isn't as high here. I'm getting ready to go catch some fish in a bit."
+
+The primary ambient sound is the clear, continuous sound of the waterfall and the gentle stream in the foreground.
+\`\`\``;
+
+  const SHOT_DESCRIPTION_PROMPT = `Analyze this video and identify its shots. For each shot, list its start and end times and provide a paragraph describing its content.`;
 
   return (
     <Card className="w-full max-w-2xl mx-auto">
@@ -233,6 +260,28 @@ export function VideoAnalyzer() {
             ))}
           </div>
         </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">专业提示词模板</label>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setPrompt(AUDIO_VIDEO_DESCRIPTION_PROMPT)}
+              className="text-xs bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700"
+            >
+              生成音视频描述
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setPrompt(SHOT_DESCRIPTION_PROMPT)}
+              className="text-xs bg-green-50 hover:bg-green-100 border border-green-200 text-green-700"
+            >
+              生成分镜描述
+            </Button>
+          </div>
+        </div>
         
         <Button 
           onClick={handleAnalyze} 
@@ -252,6 +301,12 @@ export function VideoAnalyzer() {
         {error && (
           <div className="p-3 rounded-lg bg-red-50 border border-red-200">
             <p className="text-sm text-red-600">{error}</p>
+          </div>
+        )}
+
+        {copySuccess && (
+          <div className="p-3 rounded-lg bg-green-50 border border-green-200">
+            <p className="text-sm text-green-600">✓ 分析结果已复制到剪贴板</p>
           </div>
         )}
 
