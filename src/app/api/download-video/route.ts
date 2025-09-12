@@ -40,8 +40,43 @@ async function retryWithBackoff<T>(
 
 export async function POST(request: NextRequest) {
   try {
-    const { videoFile, localVideoPath, apiKey } = await request.json();
+    const { videoFile, localVideoPath, apiKey, videoUrl, provider } = await request.json();
 
+    // For Volcengine videos, download from URL
+    if (provider === 'volcengine' && videoUrl) {
+      console.log('Downloading Volcengine video from URL:', videoUrl);
+      
+      try {
+        const response = await retryWithBackoff(async () => {
+          const res = await fetch(videoUrl);
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+          }
+          return res;
+        }, 3, 2000);
+
+        const videoBuffer = Buffer.from(await response.arrayBuffer());
+        console.log(`Volcengine video downloaded, size: ${videoBuffer.length} bytes`);
+        
+        // Return the video file directly for download
+        return new NextResponse(videoBuffer, {
+          headers: {
+            'Content-Type': 'video/mp4',
+            'Content-Disposition': `attachment; filename="volcengine-video-${Date.now()}.mp4"`,
+            'Content-Length': videoBuffer.length.toString(),
+          },
+        });
+      } catch (error) {
+        console.error('Failed to download Volcengine video:', error);
+        return NextResponse.json({
+          error: '无法下载视频文件',
+          message: '服务器下载失败，请尝试刷新页面重新生成视频',
+          details: error instanceof Error ? error.message : 'Unknown error'
+        }, { status: 500 });
+      }
+    }
+
+    // For Veo videos, use the existing logic
     if (!videoFile) {
       return NextResponse.json(
         { error: '请提供视频文件信息' },
@@ -49,7 +84,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('Downloading video from local storage:', { videoFile, localVideoPath });
+    console.log('Downloading Veo video from local storage:', { videoFile, localVideoPath });
 
     // Try to read from local storage first
     if (localVideoPath) {

@@ -7,7 +7,8 @@ import { Input } from '~/components/ui/Input';
 
 export function VideoGenerator() {
   const [prompt, setPrompt] = useState('');
-  const [model, setModel] = useState<'veo-3.0-fast-generate-preview' | 'veo-2.0-generate-001'>('veo-3.0-fast-generate-preview');
+  const [provider, setProvider] = useState<'veo' | 'volcengine'>('veo');
+  const [model, setModel] = useState<string>('veo-3.0-fast-generate-preview');
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16'>('16:9');
   const [negativePrompt, setNegativePrompt] = useState('');
   const [personGeneration, setPersonGeneration] = useState<'allow_all' | 'allow_adult' | 'dont_allow'>('allow_all');
@@ -18,12 +19,25 @@ export function VideoGenerator() {
   const [error, setError] = useState('');
   const [progress, setProgress] = useState('');
   const [operationName, setOperationName] = useState<string | null>(null);
+  const [taskId, setTaskId] = useState<string | null>(null);
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
   
   // New states for image-to-video functionality
   const [generationMode, setGenerationMode] = useState<'text-to-video' | 'image-to-video'>('text-to-video');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  
+  // Volcengine specific states
+  const [volcengineConfig, setVolcengineConfig] = useState({
+    resolution: '720p',
+    ratio: '16:9',
+    duration: 5,
+    framespersecond: 24,
+    watermark: false,
+    seed: -1,
+    camerafixed: false,
+    return_last_frame: false
+  });
   
   // Get API key from localStorage
   const getApiKey = () => {
@@ -114,101 +128,180 @@ export function VideoGenerator() {
     setLoading(true);
     setError('');
     setVideoUri(null);
+    setVideoFile(null);
+    setLocalVideoPath(null);
+    setOperationName(null);
+    setTaskId(null);
     setProgress('开始生成视频...');
 
     try {
-      const config: any = {
-        aspectRatio,
-      };
-
-      if (negativePrompt.trim()) {
-        config.negativePrompt = negativePrompt.trim();
-      }
-
-      if (model === 'veo-2.0-generate-001' || personGeneration !== 'allow_all') {
-        config.personGeneration = personGeneration;
-      }
-
-      const apiKey = getApiKey();
-      if (!apiKey) {
-        throw new Error('请先设置API Key');
-      }
-
-      // Prepare request body
-      const requestBody: any = { 
-        prompt: prompt.trim(), 
-        model,
-        config,
-        apiKey
-      };
-
-      // Add image data if in image-to-video mode
-      if (generationMode === 'image-to-video' && selectedImage) {
-        setProgress('正在处理图片...');
-        const imageData = await imageToBase64(selectedImage);
-        requestBody.image = imageData;
-        setProgress('开始生成视频...');
-      }
-
-      const response = await fetch('/api/generate-video', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 408) {
-          throw new Error('视频生成超时，这通常需要几分钟时间，请稍后重试');
-        }
-        throw new Error(data.error || '生成视频时出错');
-      }
-
-      if (data.status === 'completed' && data.videoUri) {
-        // API now returns local video URL that can be played directly
-        setVideoUri(data.videoUri);
-        setVideoFile(data.videoFile); // Save the video file object for download
-        setLocalVideoPath(data.localVideoPath); // Save local path for download
-        setProgress('视频生成完成！');
-        setLoading(false);
-      } else if (data.status === 'processing' && data.operationName) {
-        // Start client-side polling
-        setOperationName(data.operationName);
-        setProgress(`${data.message} - 正在后台生成中...`);
-        startPolling(data.operationName);
+      if (provider === 'volcengine') {
+        // Handle Volcengine video generation
+        await handleVolcengineGeneration();
       } else {
-        throw new Error('未收到有效的视频数据');
+        // Handle Veo video generation
+        await handleVeoGeneration();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成视频时出错');
       setProgress('');
-    } finally {
       setLoading(false);
     }
   };
 
+  const handleVeoGeneration = async () => {
+    const config: any = {
+      aspectRatio,
+    };
+
+    if (negativePrompt.trim()) {
+      config.negativePrompt = negativePrompt.trim();
+    }
+
+    if (model === 'veo-2.0-generate-001' || personGeneration !== 'allow_all') {
+      config.personGeneration = personGeneration;
+    }
+
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      throw new Error('请先设置API Key');
+    }
+
+    // Prepare request body
+    const requestBody: any = { 
+      prompt: prompt.trim(), 
+      model,
+      config,
+      apiKey
+    };
+
+    // Add image data if in image-to-video mode
+    if (generationMode === 'image-to-video' && selectedImage) {
+      setProgress('正在处理图片...');
+      const imageData = await imageToBase64(selectedImage);
+      requestBody.image = imageData;
+      setProgress('开始生成视频...');
+    }
+
+    const response = await fetch('/api/generate-video', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      if (response.status === 408) {
+        throw new Error('视频生成超时，这通常需要几分钟时间，请稍后重试');
+      }
+      throw new Error(data.error || '生成视频时出错');
+    }
+
+    if (data.status === 'completed' && data.videoUri) {
+      // API now returns local video URL that can be played directly
+      setVideoUri(data.videoUri);
+      setVideoFile(data.videoFile); // Save the video file object for download
+      setLocalVideoPath(data.localVideoPath); // Save local path for download
+      setProgress('视频生成完成！');
+      setLoading(false);
+    } else if (data.status === 'processing' && data.operationName) {
+      // Start client-side polling for Veo
+      setOperationName(data.operationName);
+      setProgress(`${data.message} - 正在后台生成中...`);
+      startVeoPolling(data.operationName);
+    } else {
+      throw new Error('未收到有效的视频数据');
+    }
+  };
+
+  const handleVolcengineGeneration = async () => {
+    // Prepare request body for Volcengine
+    const requestBody: any = { 
+      prompt: prompt.trim(), 
+      model,
+      config: {
+        ...volcengineConfig,
+        ratio: aspectRatio
+      }
+    };
+
+    // Add image data if in image-to-video mode
+    const images: any[] = [];
+    if (generationMode === 'image-to-video' && selectedImage) {
+      setProgress('正在处理图片...');
+      const imageData = await imageToBase64(selectedImage);
+      images.push({
+        imageBytes: imageData.imageBytes,
+        mimeType: imageData.mimeType,
+        role: 'first_frame' // Default role for single image
+      });
+      requestBody.images = images;
+      setProgress('开始生成视频...');
+    }
+
+    const response = await fetch('/api/volcengine-video', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Volcengine 视频生成时出错');
+    }
+
+    if (data.taskId) {
+      // Start client-side polling for Volcengine
+      setTaskId(data.taskId);
+      setProgress(`${data.message} - 正在后台生成中...`);
+      startVolcenginePolling(data.taskId);
+    } else {
+      throw new Error('未收到有效的任务 ID');
+    }
+  };
+
   const downloadVideo = async () => {
-    if (!videoFile) {
-      setError('视频文件信息丢失，无法下载');
+    if (!videoUri) {
+      setError('视频链接不可用，无法下载');
       return;
     }
 
     try {
       setProgress('正在下载视频到本地...');
       
-      // Use our download API endpoint that returns the actual video file
+      // Use unified download API for both providers
+      const requestBody: any = {
+        provider
+      };
+
+      if (provider === 'volcengine') {
+        // For Volcengine videos, pass the video URL
+        requestBody.videoUrl = videoUri;
+      } else {
+        // For Veo videos, pass the video file object and local path
+        if (!videoFile) {
+          setError('视频文件信息丢失，无法下载');
+          return;
+        }
+        
+        const apiKey = getApiKey();
+        requestBody.videoFile = videoFile;
+        requestBody.localVideoPath = localVideoPath;
+        requestBody.apiKey = apiKey;
+      }
+
       const response = await fetch('/api/download-video', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
-          videoFile,
-          localVideoPath 
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -225,7 +318,7 @@ export function VideoGenerator() {
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `generated-video-${Date.now()}.mp4`;
+        link.download = `${provider}-video-${Date.now()}.mp4`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -239,7 +332,7 @@ export function VideoGenerator() {
           // Create a hidden link to trigger download
           const link = document.createElement('a');
           link.href = data.downloadUrl;
-          link.download = `generated-video-${Date.now()}.mp4`;
+          link.download = `${provider}-video-${Date.now()}.mp4`;
           link.target = '_blank';
           document.body.appendChild(link);
           link.click();
@@ -268,7 +361,7 @@ export function VideoGenerator() {
     }
   };
 
-  const startPolling = (opName: string) => {
+  const startVeoPolling = (opName: string) => {
     let attempts = 0;
     const maxAttempts = 60; // 10 minutes of polling
     
@@ -307,7 +400,7 @@ export function VideoGenerator() {
           setPollingInterval(interval);
         }
       } catch (error) {
-        console.error('Polling error:', error);
+        console.error('Veo polling error:', error);
         if (attempts >= 3) {
           setError('无法获取视频生成状态，请刷新页面重试');
           setLoading(false);
@@ -322,6 +415,59 @@ export function VideoGenerator() {
     
     // Start polling
     const interval = setTimeout(poll, 10000); // First check after 10 seconds
+    setPollingInterval(interval);
+  };
+
+  const startVolcenginePolling = (taskId: string) => {
+    let attempts = 0;
+    const maxAttempts = 80; // 20 minutes of polling for Volcengine (they may take longer)
+    
+    const poll = async () => {
+      try {
+        attempts++;
+        setProgress(`视频生成中... (${attempts}/${maxAttempts}) 火山方舟通常需要几分钟时间`);
+        
+        const response = await fetch(`/api/volcengine-video?taskId=${encodeURIComponent(taskId)}`);
+        const data = await response.json();
+        
+        if (response.ok && data.status === 'succeeded' && data.videoUri) {
+          // Video generation completed
+          setVideoUri(data.videoUri);
+          setProgress('视频生成完成！');
+          setLoading(false);
+          stopPolling();
+        } else if (data.status === 'failed') {
+          // Video generation failed
+          const errorMsg = data.error?.message || '视频生成失败';
+          setError(`火山方舟生成失败: ${errorMsg}`);
+          setLoading(false);
+          stopPolling();
+        } else if (attempts >= maxAttempts) {
+          // Max attempts reached
+          setError('视频生成超时，请稍后重试或尝试简化提示词');
+          setLoading(false);
+          stopPolling();
+        } else {
+          // Continue polling for queued, running status
+          const interval = setTimeout(poll, 10000); // Poll every 10 seconds for Volcengine
+          setPollingInterval(interval);
+        }
+      } catch (error) {
+        console.error('Volcengine polling error:', error);
+        if (attempts >= 3) {
+          setError('无法获取火山方舟视频生成状态，请刷新页面重试');
+          setLoading(false);
+          stopPolling();
+        } else {
+          // Retry
+          const interval = setTimeout(poll, 10000);
+          setPollingInterval(interval);
+        }
+      }
+    };
+    
+    // Start polling
+    const interval = setTimeout(poll, 5000); // First check after 5 seconds for Volcengine
     setPollingInterval(interval);
   };
 
@@ -357,10 +503,47 @@ export function VideoGenerator() {
           视频生成
         </CardTitle>
         <CardDescription>
-          使用 Google Veo AI 根据文本描述或图片+文本生成高质量视频
+          使用 Google Veo AI 或火山方舟根据文本描述或图片+文本生成高质量视频
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Provider Selection */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">
+            AI 服务商
+          </label>
+          <div className="flex gap-2">
+            <Button
+              variant={provider === 'veo' ? "primary" : "secondary"}
+              onClick={() => {
+                setProvider('veo');
+                setModel('veo-3.0-fast-generate-preview');
+              }}
+              size="sm"
+              className="flex-1"
+            >
+              🎬 Google Veo
+            </Button>
+            <Button
+              variant={provider === 'volcengine' ? "primary" : "secondary"}
+              onClick={() => {
+                setProvider('volcengine');
+                setModel('doubao-seedance-1-0-pro-250528');
+              }}
+              size="sm"
+              className="flex-1"
+            >
+              🌋 火山方舟
+            </Button>
+          </div>
+          <p className="text-xs text-gray-600">
+            {provider === 'veo' 
+              ? '💡 Google Veo：支持音频生成，8秒高质量视频'
+              : '💡 火山方舟：支持多种模型，文生视频和图生视频能力强大'
+            }
+          </p>
+        </div>
+
         {/* Generation Mode Selection */}
         <div className="space-y-2">
           <label className="text-sm font-medium text-gray-700">
@@ -386,6 +569,7 @@ export function VideoGenerator() {
               onClick={() => setGenerationMode('image-to-video')}
               size="sm"
               className="flex-1"
+              disabled={provider === 'veo' && model === 'veo-3.0-fast-generate-preview'}
             >
               🖼️ 图片+文本生成视频
             </Button>
@@ -393,6 +577,11 @@ export function VideoGenerator() {
           {generationMode === 'image-to-video' && (
             <p className="text-xs text-blue-600">
               💡 图片+文本模式：上传一张图片作为视频的起始帧，AI将基于图片和文本描述生成动画
+            </p>
+          )}
+          {provider === 'veo' && model === 'veo-3.0-fast-generate-preview' && (
+            <p className="text-xs text-orange-600">
+              ⚠️ Veo 3 Fast 目前暂不支持图片生成视频，请选择 Veo 2 或火山方舟模型
             </p>
           )}
         </div>
@@ -456,10 +645,14 @@ export function VideoGenerator() {
             选择模型
           </label>
           <div className="space-y-2">
-            {[
-              { id: 'veo-3.0-fast-generate-preview', name: 'Veo 3 Fast (推荐)' },
-              { id: 'veo-2.0-generate-001', name: 'Veo 2' },
-            ].map((modelOption) => (
+            {(provider === 'veo' ? [
+              { id: 'veo-3.0-fast-generate-preview', name: 'Veo 3 Fast (推荐)', desc: '最新模型，8秒高质量视频，包含音频，快速生成' },
+              { id: 'veo-2.0-generate-001', name: 'Veo 2', desc: '稳定模型，5-8秒视频，静音，更多配置选项' },
+            ] : [
+              { id: 'doubao-seedance-1-0-pro-250528', name: 'Seedance Pro (推荐)', desc: '豆包视频生成专业版，高质量视频生成' },
+              { id: 'doubao-seedance-1-0-lite-t2v-250428', name: 'Seedance Lite T2V', desc: '文本生成视频轻量版，快速生成' },
+              { id: 'doubao-seedance-1-0-lite-i2v-250428', name: 'Seedance Lite I2V', desc: '图片+文本生成视频，支持首帧/尾帧/参考图' },
+            ]).map((modelOption) => (
               <div
                 key={modelOption.id}
                 className={`p-3 rounded-lg border-2 cursor-pointer transition-colors ${
@@ -467,13 +660,13 @@ export function VideoGenerator() {
                     ? 'border-blue-500 bg-blue-50'
                     : 'border-gray-200 bg-white hover:border-gray-300'
                 }`}
-                onClick={() => setModel(modelOption.id as any)}
+                onClick={() => setModel(modelOption.id)}
               >
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="font-medium text-gray-900">{modelOption.name}</h3>
                     <p className="text-sm text-gray-600 mt-1">
-                      {getModelDescription(modelOption.id)}
+                      {modelOption.desc}
                     </p>
                   </div>
                   <div className={`w-4 h-4 rounded-full border-2 mt-1 ${
@@ -579,7 +772,10 @@ export function VideoGenerator() {
           variant="primary"
           className="w-full"
         >
-          {loading ? '生成中...' : `使用 ${model === 'veo-3.0-fast-generate-preview' ? 'Veo 3 Fast' : 'Veo 2'} 生成视频`}
+          {loading ? '生成中...' : `使用 ${provider === 'veo' 
+            ? (model === 'veo-3.0-fast-generate-preview' ? 'Veo 3 Fast' : 'Veo 2')
+            : '火山方舟'
+          } 生成视频`}
         </Button>
 
         {progress && (

@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const audioFile = formData.get('audio') as File;
+    const apiKey = formData.get('apiKey') as string;
     const language = formData.get('language') as string || 'zh-CN';
     const wordsPerLine = formData.get('words_per_line') as string || '15';
     const maxLines = formData.get('max_lines') as string || '1';
@@ -25,6 +26,14 @@ export async function POST(request: NextRequest) {
     if (!audioFile) {
       return NextResponse.json(
         { error: '请上传音频文件' },
+        { status: 400 }
+      );
+    }
+
+    // Validate API key
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: 'API Key 未配置，请提供有效的API Key' },
         { status: 400 }
       );
     }

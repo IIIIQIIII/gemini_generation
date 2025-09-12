@@ -67,16 +67,13 @@ export default function Home() {
           <TabNavigation activeTab={activeTab} onTabChange={setActiveTab} />
           
           <div className="flex justify-center">
-            {apiKey || activeTab === 'subtitle' ? renderActiveComponent() : (
+            {apiKey ? renderActiveComponent() : (
               <div className="w-full max-w-2xl mx-auto p-6 bg-white rounded-lg shadow-sm border border-gray-200">
                 <div className="text-center space-y-4">
                   <div className="text-6xl">🔐</div>
                   <h3 className="text-xl font-semibold text-gray-900">需要 API Key</h3>
                   <p className="text-gray-600">
                     请先在上方设置您的 Google Gemini API Key 以使用AI功能
-                  </p>
-                  <p className="text-sm text-gray-500 mt-2">
-                    注：字幕生成功能无需 API Key
                   </p>
                 </div>
               </div>
