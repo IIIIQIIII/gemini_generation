@@ -15,6 +15,7 @@ export function TabNavigation({ activeTab, onTabChange }: TabNavigationProps) {
     { id: 'image-analyze', label: '图片分析', icon: '🔍' },
     { id: 'video-generate', label: '视频生成', icon: '🎬' },
     { id: 'video', label: '视频分析', icon: '📹' },
+    { id: 'subtitle', label: '字幕生成', icon: '🎤' },
   ];
 
   return (

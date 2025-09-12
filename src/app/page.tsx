@@ -8,6 +8,7 @@ import { ImageGenerator } from '~/components/features/ImageGenerator';
 import { ImageAnalyzer } from '~/components/features/ImageAnalyzer';
 import { VideoGenerator } from '~/components/features/VideoGenerator';
 import { VideoAnalyzer } from '~/components/features/VideoAnalyzer';
+import { SubtitleGenerator } from '~/components/features/SubtitleGenerator';
 import { ApiKeyInput } from '~/components/ui/ApiKeyInput';
 
 export default function Home() {
@@ -38,6 +39,8 @@ export default function Home() {
         return <VideoGenerator />;
       case 'video':
         return <VideoAnalyzer />;
+      case 'subtitle':
+        return <SubtitleGenerator />;
       default:
         return <TextGenerator />;
     }
@@ -64,13 +67,16 @@ export default function Home() {
           <TabNavigation activeTab={activeTab} onTabChange={setActiveTab} />
           
           <div className="flex justify-center">
-            {apiKey ? renderActiveComponent() : (
+            {apiKey || activeTab === 'subtitle' ? renderActiveComponent() : (
               <div className="w-full max-w-2xl mx-auto p-6 bg-white rounded-lg shadow-sm border border-gray-200">
                 <div className="text-center space-y-4">
                   <div className="text-6xl">🔐</div>
                   <h3 className="text-xl font-semibold text-gray-900">需要 API Key</h3>
                   <p className="text-gray-600">
                     请先在上方设置您的 Google Gemini API Key 以使用AI功能
+                  </p>
+                  <p className="text-sm text-gray-500 mt-2">
+                    注：字幕生成功能无需 API Key
                   </p>
                 </div>
               </div>
