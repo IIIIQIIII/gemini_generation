@@ -7,6 +7,7 @@
 - 🤖 **智能文本生成** - 基于 Gemini 2.5 Flash 的高质量中文文本创作
 - 🎨 **图片生成与编辑** - 文本到图片生成，支持图片编辑和风格转换  
 - 🎬 **AI视频生成** - 使用 Google Veo 3 Fast 和 Veo 2 生成高质量视频内容
+- 🎤 **AI语音合成** - 基于火山引擎 TTS 的高质量中文语音合成，支持多种音色
 - 📹 **视频智能分析** - 支持本地视频上传和 YouTube 视频链接分析
 - 🔐 **用户自带API Key** - 安全的用户自备API密钥模式，零服务器成本
 - 💾 **视频下载功能** - 支持生成视频的本地下载和新窗口播放
@@ -21,6 +22,7 @@
 - Node.js 18+ 
 - npm 或 yarn
 - Google Gemini API 密钥 (用户自备)
+- 火山引擎 TTS API 密钥 (语音合成功能)
 
 ### 安装步骤
 
@@ -54,7 +56,8 @@ npm run dev
 - **编程语言**: TypeScript
 - **样式框架**: Tailwind CSS 4.0
 - **UI 组件**: 自定义组件库 (Apple UI 风格)
-- **AI 集成**: Google Gemini 2.5 Flash API + Veo Video API
+- **AI 集成**: Google Gemini 2.5 Flash API + Veo Video API + 火山引擎 TTS API
+- **后端框架**: tRPC (类型安全的API调用)
 - **工具链**: ESLint, Prettier, T3 Stack
 
 ## 📂 项目结构
@@ -71,13 +74,19 @@ my-blog/
 │   │   │   ├── download-video/# 视频下载 API
 │   │   │   ├── validate-key/  # API Key验证
 │   │   │   ├── analyze-video/ # 视频分析 API
+│   │   │   ├── subtitle/      # 视频字幕分析 API
 │   │   │   └── test-download/ # 下载功能测试
 │   │   ├── layout.tsx         # 根布局
 │   │   └── page.tsx           # 首页
+│   ├── server/                # 服务端逻辑 (tRPC)
+│   │   └── api/
+│   │       └── routers/
+│   │           └── speech.ts  # 语音合成路由
 │   ├── components/            # React 组件
 │   │   ├── ui/               # 基础 UI 组件 (含API Key输入)
 │   │   ├── layout/           # 布局组件
 │   │   └── features/         # 功能组件
+│   │       └── SpeechSynthesizer.tsx  # 语音合成组件
 │   ├── lib/                  # 工具库
 │   └── types/               # TypeScript 类型定义
 ├── public/                   # 静态资源
@@ -103,6 +112,18 @@ my-blog/
 - **智能下载**: 自动下载到本地存储，支持浏览器下载
 - **新窗口播放**: 在新窗口中打开视频进行查看
 
+### 🎤 AI语音合成
+- **火山引擎TTS**: 集成ByteDance火山引擎高质量语音合成技术
+- **多种音色选择**: 
+  - 北京小爷 (多情感男声) - 支持情感表达的男性声音
+  - 柔美女友 (多情感女声) - 温柔自然的女性声音  
+  - 爽快思思 (中英双语) - 支持中英文混合的女性声音
+- **高品质音频**: 生成WAV格式高质量音频文件
+- **实时合成**: 快速文本到语音转换，支持在线播放
+- **智能下载**: 自动保存为MP3文件，支持本地下载
+- **情感支持**: 支持多种情感表达和语调控制
+- **时间戳信息**: 提供词级别的时间戳和置信度信息
+
 ### 📹 视频分析
 - **本地视频分析**: 支持 20MB 以内的视频文件上传
 - **YouTube 视频分析**: 直接分析 YouTube 视频内容
@@ -118,11 +139,21 @@ my-blog/
 - **验证机制**: 内置API Key有效性验证
 
 ### 获取API Key步骤
+
+**Google Gemini API Key:**
 1. 访问 [Google AI Studio](https://aistudio.google.com/apikey)
 2. 登录Google账户
 3. 点击 "Create API Key" 创建新密钥
 4. 复制API Key到应用中
 5. 确保Google Cloud账户已启用付费 (Veo需要付费)
+
+**火山引擎 TTS API Key (语音合成功能):**
+1. 访问 [火山引擎控制台](https://console.volcengine.com/)
+2. 注册并登录火山引擎账户
+3. 开通智能语音服务 (TTS)
+4. 在应用管理中创建应用，获取 App ID
+5. 在密钥管理中创建 Access Token
+6. 配置环境变量 `VOLCANO_TTS_APP_ID` 和 `VOLCANO_TTS_ACCESS_TOKEN`
 
 ## 🔧 API 接口
 
@@ -185,6 +216,45 @@ my-blog/
 ```
 
 **响应**: 直接返回视频文件 (触发浏览器下载)
+
+### tRPC speech.synthesize
+语音合成接口 (使用tRPC调用)
+
+**请求参数:**
+```typescript
+{
+  text: string,           // 要合成的文本 (最大300字符)
+  voiceType?: string      // 可选：音色类型，默认为北京小爷
+}
+```
+
+**支持的音色类型:**
+- `zh_male_beijingxiaoye_emo_v2_mars_bigtts` - 北京小爷 (多情感男声)
+- `zh_female_roumeinvyou_emo_v2_mars_bigtts` - 柔美女友 (多情感女声) 
+- `zh_female_shuangkuaisisi_emo_v2_mars_bigtts` - 爽快思思 (中英双语)
+
+**响应:**
+```typescript
+{
+  success: boolean,
+  audioBase64: string,    // Base64编码的WAV音频数据
+  text: string,          // 原始文本
+  voiceType: string      // 使用的音色类型
+}
+```
+
+### tRPC speech.getVoiceTypes
+获取可用音色列表
+
+**响应:**
+```typescript
+Array<{
+  id: string,           // 音色ID
+  name: string,         // 音色名称
+  language: string,     // 支持语言
+  description: string   // 音色描述
+}>
+```
 
 ## 🚀 部署建议
 

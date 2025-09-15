@@ -8,6 +8,8 @@ export const env = createEnv({
    */
   server: {
     GEMINI_API_KEY: z.string(),
+    VOLCANO_TTS_APP_ID: z.string(),
+    VOLCANO_TTS_ACCESS_TOKEN: z.string(),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -28,6 +30,8 @@ export const env = createEnv({
    */
   runtimeEnv: {
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    VOLCANO_TTS_APP_ID: process.env.VOLCANO_TTS_APP_ID,
+    VOLCANO_TTS_ACCESS_TOKEN: process.env.VOLCANO_TTS_ACCESS_TOKEN,
     NODE_ENV: process.env.NODE_ENV,
     // NEXT_PUBLIC_CLIENTVAR: process.env.NEXT_PUBLIC_CLIENTVAR,
   },

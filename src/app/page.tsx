@@ -9,6 +9,7 @@ import { ImageAnalyzer } from '~/components/features/ImageAnalyzer';
 import { VideoGenerator } from '~/components/features/VideoGenerator';
 import { VideoAnalyzer } from '~/components/features/VideoAnalyzer';
 import { SubtitleGenerator } from '~/components/features/SubtitleGenerator';
+import { SpeechSynthesizer } from '~/components/features/SpeechSynthesizer';
 import { ApiKeyInput } from '~/components/ui/ApiKeyInput';
 
 export default function Home() {
@@ -41,6 +42,8 @@ export default function Home() {
         return <VideoAnalyzer />;
       case 'subtitle':
         return <SubtitleGenerator />;
+      case 'speech':
+        return <SpeechSynthesizer />;
       default:
         return <TextGenerator />;
     }
