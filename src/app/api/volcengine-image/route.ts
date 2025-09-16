@@ -141,31 +141,79 @@ export async function POST(request: NextRequest) {
       watermark
     };
 
-    // Add optional parameters if provided - prioritize URL format for server compatibility
+    // Add optional parameters if provided - handle localhost URLs specially
     if (image) {
       try {
         if (Array.isArray(image)) {
-          // Handle multiple images - prioritize URLs over base64
-          requestBody.image = image.map((img, index) => {
+          // Handle multiple images
+          const processedImages = await Promise.all(image.map(async (img, index) => {
             if (typeof img !== 'string') {
               throw new Error(`图片${index + 1}数据格式错误：必须是字符串`);
             }
-            // If it's a URL (starts with http/https), use it directly
+            
+            // If it's a localhost URL, download and convert to base64
+            if (img.startsWith('http://localhost:') || img.includes('127.0.0.1:')) {
+              console.log(`Converting localhost URL ${index + 1} to base64:`, img.substring(0, 50) + '...');
+              try {
+                const response = await fetch(img);
+                const arrayBuffer = await response.arrayBuffer();
+                const base64Data = Buffer.from(arrayBuffer).toString('base64');
+                
+                // Determine format from URL or default to jpeg
+                let format = 'jpeg';
+                if (img.includes('.png')) format = 'png';
+                else if (img.includes('.webp')) format = 'webp';
+                else if (img.includes('.gif')) format = 'gif';
+                
+                return `data:image/${format};base64,${base64Data}`;
+              } catch (fetchError) {
+                throw new Error(`无法下载图片${index + 1}: ${fetchError instanceof Error ? fetchError.message : '未知错误'}`);
+              }
+            }
+            
+            // If it's a public URL, use it directly
             if (img.startsWith('http://') || img.startsWith('https://')) {
-              console.log(`Using URL for image ${index + 1}:`, img.substring(0, 50) + '...');
+              console.log(`Using public URL for image ${index + 1}:`, img.substring(0, 50) + '...');
               return img;
             }
+            
             // Otherwise, validate and format base64 data
             return validateAndFormatImageData(img, index + 1);
-          });
+          }));
+          
+          requestBody.image = processedImages;
         } else if (typeof image === 'string') {
-          // Handle single image - prioritize URL over base64
-          if (image.startsWith('http://') || image.startsWith('https://')) {
-            console.log('Using URL for single image:', image.substring(0, 50) + '...');
-            requestBody.image = image;
+          // Handle single image
+          let processedImage = image;
+          
+          // If it's a localhost URL, download and convert to base64
+          if (image.startsWith('http://localhost:') || image.includes('127.0.0.1:')) {
+            console.log('Converting localhost URL to base64:', image.substring(0, 50) + '...');
+            try {
+              const response = await fetch(image);
+              const arrayBuffer = await response.arrayBuffer();
+              const base64Data = Buffer.from(arrayBuffer).toString('base64');
+              
+              // Determine format from URL or default to jpeg
+              let format = 'jpeg';
+              if (image.includes('.png')) format = 'png';
+              else if (image.includes('.webp')) format = 'webp';
+              else if (image.includes('.gif')) format = 'gif';
+              
+              processedImage = `data:image/${format};base64,${base64Data}`;
+            } catch (fetchError) {
+              throw new Error(`无法下载图片: ${fetchError instanceof Error ? fetchError.message : '未知错误'}`);
+            }
+          } else if (image.startsWith('http://') || image.startsWith('https://')) {
+            // Public URL, use directly
+            console.log('Using public URL for single image:', image.substring(0, 50) + '...');
+            processedImage = image;
           } else {
-            requestBody.image = validateAndFormatImageData(image, 1);
+            // Validate base64 data
+            processedImage = validateAndFormatImageData(image, 1);
           }
+          
+          requestBody.image = processedImage;
         } else {
           throw new Error('图片数据格式错误：必须是字符串或字符串数组');
         }
