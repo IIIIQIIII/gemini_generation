@@ -1,9 +1,15 @@
+// @ts-nocheck
 const test = require('node:test');
 const assert = require('node:assert');
 
 // Test different prompt formats for sequential image generation
 async function testVolcengineImageGeneration() {
-  const apiKey = 'd55e209f-59e8-42d3-8e13-ce5285af170d';
+  const apiKey = process.env.VOLCENGINE_API_KEY;
+  
+  if (!apiKey) {
+    console.error('错误: VOLCENGINE_API_KEY 环境变量未设置');
+    return;
+  }
   
   const testCases = [
     {
