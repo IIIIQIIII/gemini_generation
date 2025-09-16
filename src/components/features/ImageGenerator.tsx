@@ -49,45 +49,54 @@ export function ImageGenerator() {
     setLoading(true);
     try {
       const fileArray = Array.from(files);
-      const uploadPromises = fileArray.map(async (file, index) => {
+      const uploadPromises = fileArray.map(async (file) => {
         return new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
-          reader.onload = async (e) => {
-            const base64 = e.target?.result as string;
-            
-            // Upload to temporary storage and get URL
-            try {
-              const response = await fetch('/api/upload-temp-image', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ 
-                  imageData: base64,
-                  index: index + 1 
-                }),
-              });
-
-              const result = await response.json();
-              if (result.success) {
-                resolve(result.url);
-              } else {
-                reject(new Error(result.error || '上传失败'));
-              }
-            } catch (error) {
-              reject(error);
+          reader.onload = (e) => {
+            const base64DataUrl = e.target?.result as string;
+            if (!base64DataUrl) {
+              reject(new Error('读取文件失败'));
+              return;
             }
+
+            // 验证base64格式
+            const matches = base64DataUrl.match(/^data:image\/([^;]+);base64,(.+)$/);
+            if (!matches || !matches[1] || !matches[2]) {
+              reject(new Error('无效的图片格式'));
+              return;
+            }
+
+            const format = matches[1].toLowerCase();
+            const base64Data = matches[2];
+
+            // 验证base64数据有效性
+            const base64Pattern = /^[A-Za-z0-9+/]*={0,2}$/;
+            if (!base64Pattern.test(base64Data)) {
+              reject(new Error('包含无效的base64字符'));
+              return;
+            }
+
+            if (base64Data.length < 50) {
+              reject(new Error('图片数据太短，可能无效'));
+              return;
+            }
+
+            // 标准化格式 (jpg -> jpeg)
+            const normalizedFormat = format === 'jpg' ? 'jpeg' : format;
+            const standardDataUrl = `data:image/${normalizedFormat};base64,${base64Data}`;
+
+            resolve(standardDataUrl);
           };
           reader.onerror = () => reject(new Error('读取文件失败'));
           reader.readAsDataURL(file);
         });
       });
 
-      const imageUrls = await Promise.all(uploadPromises);
-      setUploadedImages(imageUrls);
+      const base64Images = await Promise.all(uploadPromises);
+      setUploadedImages(base64Images);
       setError(''); // Clear any previous errors
     } catch (err) {
-      setError(err instanceof Error ? err.message : '上传图片失败');
+      setError(err instanceof Error ? err.message : '处理图片失败');
     } finally {
       setLoading(false);
     }
