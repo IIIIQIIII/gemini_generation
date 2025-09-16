@@ -42,89 +42,35 @@ export function ImageGenerator() {
   const [watermark, setWatermark] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files) return;
 
-    setLoading(true);
-    try {
-      const fileArray = Array.from(files);
-      const uploadPromises = fileArray.map(async (file) => {
-        return new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const base64DataUrl = e.target?.result as string;
-            if (!base64DataUrl) {
-              reject(new Error('读取文件失败'));
-              return;
-            }
-
-            // 验证base64格式
-            const matches = base64DataUrl.match(/^data:image\/([^;]+);base64,(.+)$/);
-            if (!matches || !matches[1] || !matches[2]) {
-              reject(new Error('无效的图片格式'));
-              return;
-            }
-
-            const format = matches[1].toLowerCase();
-            const base64Data = matches[2];
-
-            // 验证base64数据有效性
-            const base64Pattern = /^[A-Za-z0-9+/]*={0,2}$/;
-            if (!base64Pattern.test(base64Data)) {
-              reject(new Error('包含无效的base64字符'));
-              return;
-            }
-
-            if (base64Data.length < 50) {
-              reject(new Error('图片数据太短，可能无效'));
-              return;
-            }
-
-            // PNG转JPEG避免服务器端正则表达式问题
-            if (format === 'png') {
-              const img = new Image();
-              img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                const ctx = canvas.getContext('2d');
-                if (!ctx) {
-                  reject(new Error('无法创建画布上下文'));
-                  return;
-                }
-                
-                // 白色背景，避免透明度问题
-                ctx.fillStyle = 'white';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.drawImage(img, 0, 0);
-                
-                // 转换为JPEG格式，质量0.92
-                const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.92);
-                resolve(jpegDataUrl);
-              };
-              img.onerror = () => reject(new Error('图片加载失败'));
-              img.src = base64DataUrl;
-            } else {
-              // 标准化格式 (jpg -> jpeg)
-              const normalizedFormat = format === 'jpg' ? 'jpeg' : format;
-              const standardDataUrl = `data:image/${normalizedFormat};base64,${base64Data}`;
-              resolve(standardDataUrl);
-            }
-          };
-          reader.onerror = () => reject(new Error('读取文件失败'));
-          reader.readAsDataURL(file);
-        });
+    const fileArray = Array.from(files);
+    const uploadPromises = fileArray.map((file) => {
+      return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const base64 = e.target?.result as string;
+          if (!base64) {
+            reject(new Error('读取文件失败'));
+            return;
+          }
+          resolve(base64);
+        };
+        reader.onerror = () => reject(new Error('读取文件失败'));
+        reader.readAsDataURL(file);
       });
+    });
 
-      const base64Images = await Promise.all(uploadPromises);
-      setUploadedImages(base64Images);
-      setError(''); // Clear any previous errors
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '处理图片失败');
-    } finally {
-      setLoading(false);
-    }
+    Promise.all(uploadPromises)
+      .then((base64Images) => {
+        setUploadedImages(base64Images);
+        setError('');
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : '处理图片失败');
+      });
   };
 
   const handleGenerate = async () => {

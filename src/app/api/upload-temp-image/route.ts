@@ -14,18 +14,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Parse base64 data URL - 支持更多图片格式
-    const matches = imageData.match(/^data:image\/(jpeg|jpg|png|webp|gif|bmp|tiff|svg\+xml);base64,(.+)$/);
-    if (!matches) {
-      // 提供更详细的错误信息帮助调试
-      console.log('Invalid image format received:', imageData.substring(0, 100));
-      return NextResponse.json(
-        { error: `无效的图片格式。支持：JPEG、PNG、WebP、GIF、BMP、TIFF、SVG。接收到：${imageData.substring(0, 50)}...` },
-        { status: 400 }
-      );
-    }
-
-    const [, format, base64Data] = matches;
+    // Simple base64 data URL parsing
+    const base64Data = imageData.split(',')[1] || imageData;
+    const format = 'jpeg'; // Default format
     const buffer = Buffer.from(base64Data, 'base64');
     
     // Create temp directory if it doesn't exist
@@ -37,7 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate unique filename
-    const filename = `temp-image-${randomUUID()}.${format === 'jpg' ? 'jpeg' : format}`;
+    const filename = `temp-image-${randomUUID()}.${format}`;
     const filepath = join(tempDir, filename);
     
     // Write file
