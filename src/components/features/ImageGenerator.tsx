@@ -81,11 +81,36 @@ export function ImageGenerator() {
               return;
             }
 
-            // 标准化格式 (jpg -> jpeg)
-            const normalizedFormat = format === 'jpg' ? 'jpeg' : format;
-            const standardDataUrl = `data:image/${normalizedFormat};base64,${base64Data}`;
-
-            resolve(standardDataUrl);
+            // PNG转JPEG避免服务器端正则表达式问题
+            if (format === 'png') {
+              const img = new Image();
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                  reject(new Error('无法创建画布上下文'));
+                  return;
+                }
+                
+                // 白色背景，避免透明度问题
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+                
+                // 转换为JPEG格式，质量0.92
+                const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+                resolve(jpegDataUrl);
+              };
+              img.onerror = () => reject(new Error('图片加载失败'));
+              img.src = base64DataUrl;
+            } else {
+              // 标准化格式 (jpg -> jpeg)
+              const normalizedFormat = format === 'jpg' ? 'jpeg' : format;
+              const standardDataUrl = `data:image/${normalizedFormat};base64,${base64Data}`;
+              resolve(standardDataUrl);
+            }
           };
           reader.onerror = () => reject(new Error('读取文件失败'));
           reader.readAsDataURL(file);
