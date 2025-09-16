@@ -9,14 +9,14 @@ function validateAndFormatImageData(imageData: string, imageIndex: number): stri
 
   // Check if it's already a proper data URL
   if (imageData.startsWith('data:image/')) {
-    // Validate the format - 使用更宽松但安全的正则表达式
-    const matches = imageData.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,([A-Za-z0-9+/]*={0,2})$/);
+    // 使用与前端一致的宽松但安全的正则表达式
+    const matches = imageData.match(/^data:image\/([^;]+);base64,(.+)$/);
     if (!matches) {
       throw new Error(`图片${imageIndex}格式错误：必须是有效的base64数据URL格式。当前格式：${imageData.substring(0, 50)}...`);
     }
     
-    const format = matches[1];
-    const base64Data = matches[2];
+    const format = matches[1]?.toLowerCase();
+    const base64Data = matches[2]?.replace(/\s/g, ''); // 清理所有空白字符
     
     // Additional validation for extracted data
     if (!format || !base64Data) {
@@ -28,14 +28,14 @@ function validateAndFormatImageData(imageData: string, imageIndex: number): stri
       throw new Error(`图片${imageIndex}的base64数据为空`);
     }
     
-    // Check if base64 data contains valid characters
+    // 清理后验证base64字符
     const base64Pattern = /^[A-Za-z0-9+/]*={0,2}$/;
     if (!base64Pattern.test(base64Data)) {
       throw new Error(`图片${imageIndex}包含无效的base64字符`);
     }
     
-    // Normalize format to lowercase
-    const normalizedFormat = format.toLowerCase() === 'jpg' ? 'jpeg' : format.toLowerCase();
+    // 标准化格式 (jpg -> jpeg, 但保持其他格式如svg+xml)
+    const normalizedFormat = format === 'jpg' ? 'jpeg' : format;
     return `data:image/${normalizedFormat};base64,${base64Data}`;
   }
   
