@@ -14,11 +14,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Parse base64 data URL
-    const matches = imageData.match(/^data:image\/(jpeg|jpg|png);base64,(.+)$/);
+    // Parse base64 data URL - 支持更多图片格式
+    const matches = imageData.match(/^data:image\/(jpeg|jpg|png|webp|gif|bmp|tiff|svg\+xml);base64,(.+)$/);
     if (!matches) {
+      // 提供更详细的错误信息帮助调试
+      console.log('Invalid image format received:', imageData.substring(0, 100));
       return NextResponse.json(
-        { error: '无效的图片格式' },
+        { error: `无效的图片格式。支持：JPEG、PNG、WebP、GIF、BMP、TIFF、SVG。接收到：${imageData.substring(0, 50)}...` },
         { status: 400 }
       );
     }
