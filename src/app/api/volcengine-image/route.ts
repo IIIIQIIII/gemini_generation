@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const apiKey = env.VOLCENGINE_API_KEY;
+    const apiKey = process.env.VOLCENGINE_API_KEY;
     if (!apiKey) {
       return NextResponse.json({ error: 'Volcengine API Key 未配置' }, { status: 400 });
     }

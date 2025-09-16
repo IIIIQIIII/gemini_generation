@@ -349,7 +349,7 @@ class VolcanoTTSClient {
       
       const ws = new WebSocket('wss://openspeech.bytedance.com/api/v1/tts/ws_binary', {
         headers: {
-          'Authorization': `Bearer;${env.VOLCANO_TTS_ACCESS_TOKEN}`,
+          'Authorization': `Bearer;${process.env.VOLCANO_TTS_ACCESS_TOKEN}`,
         },
         skipUTF8Validation: true,
       });
@@ -360,8 +360,8 @@ class VolcanoTTSClient {
           
           const request = {
             app: {
-              appid: env.VOLCANO_TTS_APP_ID,
-              token: env.VOLCANO_TTS_ACCESS_TOKEN,
+              appid: process.env.VOLCANO_TTS_APP_ID,
+              token: process.env.VOLCANO_TTS_ACCESS_TOKEN,
               cluster: voiceToCluster(voiceType),
             },
             user: {
