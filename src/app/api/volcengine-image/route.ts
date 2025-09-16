@@ -141,20 +141,31 @@ export async function POST(request: NextRequest) {
       watermark
     };
 
-    // Add optional parameters if provided with proper format validation
+    // Add optional parameters if provided - prioritize URL format for server compatibility
     if (image) {
       try {
         if (Array.isArray(image)) {
-          // Handle multiple images
+          // Handle multiple images - prioritize URLs over base64
           requestBody.image = image.map((img, index) => {
             if (typeof img !== 'string') {
               throw new Error(`图片${index + 1}数据格式错误：必须是字符串`);
             }
+            // If it's a URL (starts with http/https), use it directly
+            if (img.startsWith('http://') || img.startsWith('https://')) {
+              console.log(`Using URL for image ${index + 1}:`, img.substring(0, 50) + '...');
+              return img;
+            }
+            // Otherwise, validate and format base64 data
             return validateAndFormatImageData(img, index + 1);
           });
         } else if (typeof image === 'string') {
-          // Handle single image
-          requestBody.image = validateAndFormatImageData(image, 1);
+          // Handle single image - prioritize URL over base64
+          if (image.startsWith('http://') || image.startsWith('https://')) {
+            console.log('Using URL for single image:', image.substring(0, 50) + '...');
+            requestBody.image = image;
+          } else {
+            requestBody.image = validateAndFormatImageData(image, 1);
+          }
         } else {
           throw new Error('图片数据格式错误：必须是字符串或字符串数组');
         }

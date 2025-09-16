@@ -42,25 +42,54 @@ export function ImageGenerator() {
   const [watermark, setWatermark] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
-    if (files) {
+    if (!files) return;
+
+    setLoading(true);
+    try {
       const fileArray = Array.from(files);
-      const readers = fileArray.map(file => {
-        return new Promise<string>((resolve) => {
+      const uploadPromises = fileArray.map(async (file, index) => {
+        return new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
-          reader.onload = (e) => {
+          reader.onload = async (e) => {
             const base64 = e.target?.result as string;
-            // Keep the full data URL for Volcengine API
-            resolve(base64);
+            
+            // Upload to temporary storage and get URL
+            try {
+              const response = await fetch('/api/upload-temp-image', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                  imageData: base64,
+                  index: index + 1 
+                }),
+              });
+
+              const result = await response.json();
+              if (result.success) {
+                resolve(result.url);
+              } else {
+                reject(new Error(result.error || '上传失败'));
+              }
+            } catch (error) {
+              reject(error);
+            }
           };
+          reader.onerror = () => reject(new Error('读取文件失败'));
           reader.readAsDataURL(file);
         });
       });
 
-      Promise.all(readers).then(base64Images => {
-        setUploadedImages(base64Images);
-      });
+      const imageUrls = await Promise.all(uploadPromises);
+      setUploadedImages(imageUrls);
+      setError(''); // Clear any previous errors
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '上传图片失败');
+    } finally {
+      setLoading(false);
     }
   };
 
