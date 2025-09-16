@@ -15,7 +15,7 @@ export function Header() {
           </div>
           <div className="flex items-center space-x-4">
             <div className="text-sm text-gray-500">
-              文本 · 图片 · 视频
+              文本 · 图片 · 视频 · 音频
             </div>
           </div>
         </div>
