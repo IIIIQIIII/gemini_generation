@@ -98,7 +98,7 @@ try {
 
   problemFormats.forEach(({ name, data }) => {
     const testData = data.substring(0, 200); // 只测试前200字符避免输出过长
-    const matches = testData.match(patterns[0].regex);
+    const matches = patterns[0] ? testData.match(patterns[0].regex) : null;
     console.log(`   ${name}: ${matches ? '✅ 匹配' : '❌ 不匹配'}`);
   });
 
@@ -150,7 +150,7 @@ try {
       }
       
     } catch (error) {
-      console.log(`   API测试失败: ${error.message}`);
+      console.log(`   API测试失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -166,9 +166,9 @@ try {
     });
 
 } catch (error) {
-  console.error('❌ 分析失败:', error.message);
+  console.error('❌ 分析失败:', error instanceof Error ? error.message : String(error));
   
-  if (error.code === 'ENOENT') {
+  if (error instanceof Error && error.code && error.code === 'ENOENT') {
     console.log('\n💡 建议:');
     console.log('1. 请确认文件路径是否正确');
     console.log('2. 请确认文件是否存在');

@@ -2,17 +2,16 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import { env } from '~/env';
 
-const genAI = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
-
 interface AnalyzeVideoRequest {
   prompt: string;
   videoData?: string;
   youtubeUrl?: string;
+  apiKey?: string;
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { prompt, videoData, youtubeUrl }: AnalyzeVideoRequest = await request.json() as AnalyzeVideoRequest;
+    const { prompt, videoData, youtubeUrl, apiKey: userApiKey }: AnalyzeVideoRequest = await request.json() as AnalyzeVideoRequest;
 
     if (!prompt) {
       return NextResponse.json(
@@ -21,6 +20,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Use user-provided API key first, fallback to environment variable
+    const apiKey = userApiKey || env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: 'API Key 未配置，请提供有效的API Key' }, { status: 400 });
+    }
+
+    const genAI = new GoogleGenAI({ apiKey });
     let response;
 
     if (youtubeUrl) {

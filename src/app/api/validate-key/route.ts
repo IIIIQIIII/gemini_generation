@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       
       // Try to make a simple test request to validate the API key
       const testResult = await genAI.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash',
         contents: 'Hello'
       });
       

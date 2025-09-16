@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Button } from '~/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/Card';
 import { Input } from '~/components/ui/Input';
+import { useAuth } from '~/components/layout/Header';
 
 // Robust clipboard copy utility function
 const copyToClipboard = async (text: string): Promise<{ success: boolean; message: string }> => {
@@ -60,6 +61,7 @@ const PROMPT_TEMPLATES = [
 ];
 
 export function TextGenerator() {
+  const { useVertexAI, setUseVertexAI, authMode, setAuthMode } = useAuth();
   const [selectedTemplate, setSelectedTemplate] = useState('free-chat');
   const [userText, setUserText] = useState('');
   const [customPrompt, setCustomPrompt] = useState('');
@@ -92,24 +94,37 @@ export function TextGenerator() {
       return;
     }
 
-    // Get API key from localStorage
-    const apiKey = localStorage.getItem('gemini_api_key');
-    if (!apiKey) {
-      setError('请先设置API Key');
-      return;
+    // For API Key mode, check if API key is available
+    if (!useVertexAI) {
+      const apiKey = localStorage.getItem('gemini_api_key');
+      if (!apiKey) {
+        setError('请先设置API Key，或选择Vertex AI模式');
+        return;
+      }
     }
 
     setLoading(true);
     setError('');
     setResult('');
+    setAuthMode(''); // Clear previous mode
 
     try {
+      const requestBody: any = { 
+        prompt: finalPrompt, 
+        useVertexAI: useVertexAI 
+      };
+
+      // Only add API key if not using Vertex AI
+      if (!useVertexAI) {
+        requestBody.apiKey = localStorage.getItem('gemini_api_key');
+      }
+
       const response = await fetch('/api/generate-text', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ prompt: finalPrompt, apiKey }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
@@ -119,6 +134,7 @@ export function TextGenerator() {
       }
 
       setResult(data.text);
+      setAuthMode(data.mode || 'api-key'); // Set the actual mode used
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成文本时出错');
     } finally {
@@ -159,6 +175,18 @@ export function TextGenerator() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* 当前认证模式状态显示 */}
+        {authMode && (
+          <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+            <div className="text-sm text-blue-900">
+              <strong>当前认证模式:</strong> {authMode === 'vertex-ai' ? 'Vertex AI (多用户并发支持)' : 'API Key (个人使用)'}
+            </div>
+            <div className="text-xs text-blue-700 mt-1">
+              可在页面顶部切换认证模式
+            </div>
+          </div>
+        )}
+
         {/* 提示词模板选择器 */}
         <div className="space-y-2">
           <label className="text-sm font-medium text-gray-700">

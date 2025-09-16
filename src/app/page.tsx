@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Header } from '~/components/layout/Header';
+import { Header, AuthProvider } from '~/components/layout/Header';
 import { TabNavigation } from '~/components/layout/TabNavigation';
 import { TextGenerator } from '~/components/features/TextGenerator';
 import { ImageGenerator } from '~/components/features/ImageGenerator';
@@ -50,9 +50,10 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header />
-      <main className="py-8">
+    <AuthProvider>
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <main className="py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-8">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">
@@ -93,6 +94,7 @@ export default function Home() {
           </div>
         </div>
       </footer>
-    </div>
+      </div>
+    </AuthProvider>
   );
 }
