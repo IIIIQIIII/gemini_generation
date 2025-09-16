@@ -9,10 +9,10 @@ function validateAndFormatImageData(imageData: string, imageIndex: number): stri
 
   // Check if it's already a proper data URL
   if (imageData.startsWith('data:image/')) {
-    // Validate the format
-    const matches = imageData.match(/^data:image\/(jpeg|jpg|png);base64,(.+)$/);
+    // Validate the format - 支持更多图片格式
+    const matches = imageData.match(/^data:image\/(jpeg|jpg|png|webp|gif|bmp|tiff|svg\+xml);base64,(.+)$/);
     if (!matches) {
-      throw new Error(`图片${imageIndex}格式错误：必须是有效的data URL格式 (data:image/jpeg;base64,xxx 或 data:image/png;base64,xxx)`);
+      throw new Error(`图片${imageIndex}格式错误：支持的格式包括JPEG、PNG、WebP、GIF、BMP、TIFF、SVG。当前格式：${imageData.substring(0, 50)}...`);
     }
     
     const format = matches[1];
