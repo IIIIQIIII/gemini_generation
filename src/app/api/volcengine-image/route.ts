@@ -1,6 +1,70 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { env } from '~/env';
 
+// Helper function to validate and format image data
+function validateAndFormatImageData(imageData: string, imageIndex: number): string {
+  if (!imageData) {
+    throw new Error(`图片${imageIndex}数据为空`);
+  }
+
+  // Check if it's already a proper data URL
+  if (imageData.startsWith('data:image/')) {
+    // Validate the format
+    const matches = imageData.match(/^data:image\/(jpeg|jpg|png);base64,(.+)$/);
+    if (!matches) {
+      throw new Error(`图片${imageIndex}格式错误：必须是有效的data URL格式 (data:image/jpeg;base64,xxx 或 data:image/png;base64,xxx)`);
+    }
+    
+    const format = matches[1];
+    const base64Data = matches[2];
+    
+    // Additional validation for extracted data
+    if (!format || !base64Data) {
+      throw new Error(`图片${imageIndex}格式解析失败`);
+    }
+    
+    // Validate base64 data
+    if (base64Data.length === 0) {
+      throw new Error(`图片${imageIndex}的base64数据为空`);
+    }
+    
+    // Check if base64 data contains valid characters
+    const base64Pattern = /^[A-Za-z0-9+/]*={0,2}$/;
+    if (!base64Pattern.test(base64Data)) {
+      throw new Error(`图片${imageIndex}包含无效的base64字符`);
+    }
+    
+    // Normalize format to lowercase
+    const normalizedFormat = format.toLowerCase() === 'jpg' ? 'jpeg' : format.toLowerCase();
+    return `data:image/${normalizedFormat};base64,${base64Data}`;
+  }
+  
+  // Check if it's a HTTP URL
+  if (imageData.startsWith('http://') || imageData.startsWith('https://')) {
+    // Basic URL validation
+    try {
+      new URL(imageData);
+      return imageData;
+    } catch {
+      throw new Error(`图片${imageIndex}的URL格式错误`);
+    }
+  }
+  
+  // Assume it's raw base64 data, validate and add proper prefix
+  const base64Pattern = /^[A-Za-z0-9+/]*={0,2}$/;
+  if (!base64Pattern.test(imageData)) {
+    throw new Error(`图片${imageIndex}包含无效的base64字符`);
+  }
+  
+  // Check if the base64 data is too short (likely invalid)
+  if (imageData.length < 50) {
+    throw new Error(`图片${imageIndex}的base64数据太短，可能无效`);
+  }
+  
+  // Default to JPEG format for raw base64 data
+  return `data:image/jpeg;base64,${imageData}`;
+}
+
 interface VolcengineImageRequest {
   model?: string;
   prompt: string;
@@ -77,9 +141,31 @@ export async function POST(request: NextRequest) {
       watermark
     };
 
-    // Add optional parameters if provided
+    // Add optional parameters if provided with proper format validation
     if (image) {
-      requestBody.image = image;
+      try {
+        if (Array.isArray(image)) {
+          // Handle multiple images
+          requestBody.image = image.map((img, index) => {
+            if (typeof img !== 'string') {
+              throw new Error(`图片${index + 1}数据格式错误：必须是字符串`);
+            }
+            return validateAndFormatImageData(img, index + 1);
+          });
+        } else if (typeof image === 'string') {
+          // Handle single image
+          requestBody.image = validateAndFormatImageData(image, 1);
+        } else {
+          throw new Error('图片数据格式错误：必须是字符串或字符串数组');
+        }
+      } catch (formatError) {
+        console.error('Image format validation error:', formatError);
+        const errorMessage = formatError instanceof Error ? formatError.message : '未知的图片格式错误';
+        return NextResponse.json(
+          { error: `图片格式验证失败: ${errorMessage}` },
+          { status: 400 }
+        );
+      }
     }
     
     if (sequential_image_generation_options) {
