@@ -17,11 +17,15 @@ export async function POST(request: NextRequest) {
     const supportedEndpoints = [
       'generate-text',
       'generate-image', 
+      'edit-image',
       'generate-video',
       'volcengine-image',
       'volcengine-video',
       'qianfan-video',
-      'speech-synthesize'
+      'speech-synthesize',
+      'analyze-video',
+      'analyze-image',
+      'subtitle-submit'
     ];
 
     if (!supportedEndpoints.includes(endpoint)) {

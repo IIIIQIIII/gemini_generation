@@ -118,6 +118,8 @@ class QueueManager {
         return await this.handleEditImage(requestData, baseUrl);
       case 'analyze-video':
         return await this.handleAnalyzeVideo(requestData, baseUrl);
+      case 'analyze-image':
+        return await this.handleAnalyzeImage(requestData, baseUrl);
       case 'subtitle-submit':
         return await this.handleSubtitleSubmit(requestData, baseUrl);
       case 'generate-video':
@@ -194,6 +196,22 @@ class QueueManager {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Video analysis failed');
+    }
+    
+    return await response.json();
+  }
+
+  // 处理图片分析
+  private async handleAnalyzeImage(data: any, baseUrl: string) {
+    const response = await fetch(`${baseUrl}/api/analyze-image`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Image analysis failed');
     }
     
     return await response.json();
