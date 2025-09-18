@@ -59,15 +59,8 @@ export async function GET(request: NextRequest) {
 
         // Create readable stream for the range
         const stream = createReadStream(videoPath, { start, end });
-        
-        // Convert stream to buffer (Next.js requires buffer for response)
-        const chunks: Buffer[] = [];
-        for await (const chunk of stream) {
-          chunks.push(chunk);
-        }
-        const buffer = Buffer.concat(chunks);
 
-        return new NextResponse(buffer, {
+        return new NextResponse(stream as any, {
           status: 206, // Partial Content
           headers: {
             ...commonHeaders,
@@ -79,15 +72,8 @@ export async function GET(request: NextRequest) {
 
       // No range request - return entire file
       const stream = createReadStream(videoPath);
-      const chunks: Buffer[] = [];
-      
-      for await (const chunk of stream) {
-        chunks.push(chunk);
-      }
-      
-      const buffer = Buffer.concat(chunks);
 
-      return new NextResponse(buffer, {
+      return new NextResponse(stream as any, {
         status: 200,
         headers: {
           ...commonHeaders,

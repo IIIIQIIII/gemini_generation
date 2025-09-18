@@ -168,7 +168,7 @@ try {
 } catch (error) {
   console.error('❌ 分析失败:', error instanceof Error ? error.message : String(error));
   
-  if (error instanceof Error && error.code && error.code === 'ENOENT') {
+  if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
     console.log('\n💡 建议:');
     console.log('1. 请确认文件路径是否正确');
     console.log('2. 请确认文件是否存在');

@@ -4,7 +4,10 @@ import { useState, useRef } from 'react';
 import { Button } from '~/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/Card';
 import { Input } from '~/components/ui/Input';
+import { useAuth } from '~/components/layout/Header';
+
 export function VideoAnalyzer() {
+  const { useVertexAI, setUseVertexAI, authMode, setAuthMode } = useAuth();
   const [prompt, setPrompt] = useState('');
   const [result, setResult] = useState('');
   const [loading, setLoading] = useState(false);
@@ -51,17 +54,35 @@ export function VideoAnalyzer() {
       return;
     }
 
+    // For API Key mode, check if API key is available
+    if (!useVertexAI) {
+      const apiKey = localStorage.getItem('gemini_api_key');
+      if (!apiKey) {
+        setError('请先设置API Key，或选择Vertex AI模式');
+        return;
+      }
+    }
+
     setLoading(true);
     setError('');
     setResult('');
+    setAuthMode(''); // Clear previous mode
 
     try {
-      const requestBody: any = { prompt };
+      const requestBody: any = { 
+        prompt, 
+        useVertexAI: useVertexAI 
+      };
       
       if (analysisMode === 'upload' && uploadedVideo) {
         requestBody.videoData = uploadedVideo;
       } else if (analysisMode === 'youtube') {
         requestBody.youtubeUrl = youtubeUrl;
+      }
+
+      // Only add API key if not using Vertex AI
+      if (!useVertexAI) {
+        requestBody.apiKey = localStorage.getItem('gemini_api_key');
       }
 
       const response = await fetch('/api/analyze-video', {
@@ -79,6 +100,7 @@ export function VideoAnalyzer() {
       }
 
       setResult(data.text);
+      setAuthMode(data.mode || 'api-key'); // Set the actual mode used
     } catch (err) {
       setError(err instanceof Error ? err.message : '分析视频时出错');
     } finally {
@@ -174,6 +196,18 @@ The primary ambient sound is the clear, continuous sound of the waterfall and th
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* 当前认证模式状态显示 */}
+        {authMode && (
+          <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+            <div className="text-sm text-blue-900">
+              <strong>当前认证模式:</strong> {authMode === 'vertex-ai' ? 'Vertex AI (多用户并发支持)' : 'API Key (个人使用)'}
+            </div>
+            <div className="text-xs text-blue-700 mt-1">
+              可在页面顶部切换认证模式
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-2">
           <Button
             variant={analysisMode === 'upload' ? "primary" : "secondary"}

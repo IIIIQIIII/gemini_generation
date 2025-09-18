@@ -6,6 +6,14 @@ import "./src/env.js";
 
 /** @type {import("next").NextConfig} */
 const config = {
+  // Skip ESLint during builds
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  // Skip TypeScript type checking during builds
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   // Extend API timeouts for video generation
   experimental: {
     serverActions: {

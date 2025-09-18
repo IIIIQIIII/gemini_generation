@@ -7,7 +7,7 @@ import { Input } from '~/components/ui/Input';
 
 export function VideoGenerator() {
   const [prompt, setPrompt] = useState('');
-  const [provider, setProvider] = useState<'veo' | 'volcengine'>('veo');
+  const [provider, setProvider] = useState<'veo' | 'volcengine' | 'qianfan'>('veo');
   const [model, setModel] = useState<string>('veo-3.0-fast-generate-preview');
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16'>('16:9');
   const [negativePrompt, setNegativePrompt] = useState('');
@@ -21,6 +21,10 @@ export function VideoGenerator() {
   const [operationName, setOperationName] = useState<string | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  
+  // Rate limiting states
+  const [lastRequestTime, setLastRequestTime] = useState<number>(0);
+  const [rateLimitCooldown, setRateLimitCooldown] = useState<number>(0);
   
   // New states for image-to-video functionality
   const [generationMode, setGenerationMode] = useState<'text-to-video' | 'image-to-video'>('text-to-video');
@@ -38,6 +42,9 @@ export function VideoGenerator() {
     camerafixed: false,
     return_last_frame: false
   });
+  
+  // Qianfan specific states
+  const [qianfanDuration, setQianfanDuration] = useState<5 | 10>(5);
   
   // Get API key from localStorage
   const getApiKey = () => {
@@ -125,6 +132,21 @@ export function VideoGenerator() {
       return;
     }
 
+    // Rate limiting check for Qianfan
+    if (provider === 'qianfan') {
+      const now = Date.now();
+      const timeSinceLastRequest = now - lastRequestTime;
+      const minInterval = 60000; // 1 minute minimum between requests
+      
+      if (timeSinceLastRequest < minInterval && lastRequestTime > 0) {
+        const remainingTime = Math.ceil((minInterval - timeSinceLastRequest) / 1000);
+        setError(`请等待 ${remainingTime} 秒后再次尝试，以避免API速率限制`);
+        return;
+      }
+      
+      setLastRequestTime(now);
+    }
+
     setLoading(true);
     setError('');
     setVideoUri(null);
@@ -138,6 +160,9 @@ export function VideoGenerator() {
       if (provider === 'volcengine') {
         // Handle Volcengine video generation
         await handleVolcengineGeneration();
+      } else if (provider === 'qianfan') {
+        // Handle Qianfan video generation
+        await handleQianfanGeneration();
       } else {
         // Handle Veo video generation
         await handleVeoGeneration();
@@ -266,6 +291,53 @@ export function VideoGenerator() {
     }
   };
 
+  const handleQianfanGeneration = async () => {
+    // Prepare request body for Qianfan
+    const requestBody: any = { 
+      prompt: prompt.trim(), 
+      model,
+      config: {
+        duration: qianfanDuration // Use user-selected duration
+      }
+    };
+
+    // Add image data if in image-to-video mode
+    const images: any[] = [];
+    if (generationMode === 'image-to-video' && selectedImage) {
+      setProgress('正在处理图片...');
+      const imageData = await imageToBase64(selectedImage);
+      images.push({
+        imageBytes: imageData.imageBytes,
+        mimeType: imageData.mimeType
+      });
+      requestBody.images = images;
+      setProgress('开始生成视频...');
+    }
+
+    const response = await fetch('/api/qianfan-video', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Qianfan 视频生成时出错');
+    }
+
+    if (data.taskId) {
+      // Start client-side polling for Qianfan
+      setTaskId(data.taskId);
+      setProgress(`${data.message} - 正在后台生成中...`);
+      startQianfanPolling(data.taskId);
+    } else {
+      throw new Error('未收到有效的任务 ID');
+    }
+  };
+
   const downloadVideo = async () => {
     if (!videoUri) {
       setError('视频链接不可用，无法下载');
@@ -275,13 +347,41 @@ export function VideoGenerator() {
     try {
       setProgress('正在下载视频到本地...');
       
-      // Use unified download API for both providers
+      // Handle different providers with different download strategies
+      if (provider === 'qianfan' || provider === 'volcengine') {
+        // For Qianfan and Volcengine: Direct download from video URL
+        try {
+          const response = await fetch(videoUri);
+          if (!response.ok) {
+            throw new Error(`无法获取视频文件: ${response.status}`);
+          }
+          
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `${provider}-video-${Date.now()}.mp4`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+          
+          setProgress('视频下载完成！');
+          setTimeout(() => setProgress(''), 3000);
+          return;
+        } catch (directDownloadError) {
+          console.warn('Direct download failed, trying API method:', directDownloadError);
+          // Fall back to API download method
+        }
+      }
+      
+      // Use unified download API for providers that support it
       const requestBody: any = {
         provider
       };
 
-      if (provider === 'volcengine') {
-        // For Volcengine videos, pass the video URL
+      if (provider === 'volcengine' || provider === 'qianfan') {
+        // For Volcengine and Qianfan videos, pass the video URL
         requestBody.videoUrl = videoUri;
       } else {
         // For Veo videos, pass the video file object and local path
@@ -305,8 +405,25 @@ export function VideoGenerator() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || '下载失败');
+        let errorMessage = '下载失败';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || '下载失败';
+        } catch (parseError) {
+          // If response is not JSON, get text instead
+          try {
+            const errorText = await response.text();
+            errorMessage = errorText || `HTTP ${response.status}: ${response.statusText}`;
+          } catch (textError) {
+            errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+          }
+        }
+        
+        // Don't throw error to console, just set user-friendly error message
+        console.warn('Download API failed:', errorMessage);
+        setError(`视频下载失败: ${errorMessage}`);
+        setProgress('');
+        return;
       }
 
       // Check if response is a video file or JSON
@@ -471,6 +588,79 @@ export function VideoGenerator() {
     setPollingInterval(interval);
   };
 
+  const startQianfanPolling = (taskId: string) => {
+    let attempts = 0;
+    const maxAttempts = 60; // 15 minutes of polling for Qianfan
+    
+    const poll = async () => {
+      try {
+        attempts++;
+        setProgress(`视频生成中... (${attempts}/${maxAttempts}) 百度千帆通常需要几分钟时间`);
+        
+        const response = await fetch(`/api/qianfan-video?taskId=${encodeURIComponent(taskId)}`);
+        const data = await response.json();
+        
+        if (response.ok && data.status === 'succeeded' && data.videoUri) {
+          // Video generation completed
+          setVideoUri(data.videoUri);
+          setProgress('视频生成完成！');
+          setLoading(false);
+          stopPolling();
+        } else if (data.status === 'failed') {
+          // Video generation failed
+          console.error('Qianfan task failed:', data);
+          
+          let errorMsg = '视频生成失败';
+          let detailedError = '';
+          
+          if (data.error) {
+            errorMsg = data.error.message || '视频生成失败';
+            
+            // Add detailed error information if available
+            const details = [];
+            if (data.error.code) {
+              details.push(`错误代码: ${data.error.code}`);
+            }
+            if (data.error.details) {
+              details.push(`详细信息: ${JSON.stringify(data.error.details)}`);
+            }
+            if (details.length > 0) {
+              detailedError = ` (${details.join(', ')})`;
+            }
+          }
+          
+          setError(`百度千帆生成失败: ${errorMsg}${detailedError}`);
+          setLoading(false);
+          stopPolling();
+        } else if (attempts >= maxAttempts) {
+          // Max attempts reached
+          setError('视频生成超时，请稍后重试或尝试简化提示词');
+          setLoading(false);
+          stopPolling();
+        } else {
+          // Continue polling for pending, queued, running status
+          const interval = setTimeout(poll, 15000); // Poll every 15 seconds for Qianfan
+          setPollingInterval(interval);
+        }
+      } catch (error) {
+        console.error('Qianfan polling error:', error);
+        if (attempts >= 3) {
+          setError('无法获取百度千帆视频生成状态，请刷新页面重试');
+          setLoading(false);
+          stopPolling();
+        } else {
+          // Retry
+          const interval = setTimeout(poll, 15000);
+          setPollingInterval(interval);
+        }
+      }
+    };
+    
+    // Start polling
+    const interval = setTimeout(poll, 8000); // First check after 8 seconds for Qianfan
+    setPollingInterval(interval);
+  };
+
   const stopPolling = () => {
     if (pollingInterval) {
       clearTimeout(pollingInterval);
@@ -503,7 +693,7 @@ export function VideoGenerator() {
           视频生成
         </CardTitle>
         <CardDescription>
-          使用 Google Veo AI 或火山方舟根据文本描述或图片+文本生成高质量视频
+          使用 Google Veo AI、火山方舟或百度千帆根据文本描述或图片+文本生成高质量视频
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -512,7 +702,7 @@ export function VideoGenerator() {
           <label className="text-sm font-medium text-gray-700">
             AI 服务商
           </label>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <Button
               variant={provider === 'veo' ? "primary" : "secondary"}
               onClick={() => {
@@ -520,7 +710,6 @@ export function VideoGenerator() {
                 setModel('veo-3.0-fast-generate-preview');
               }}
               size="sm"
-              className="flex-1"
             >
               🎬 Google Veo
             </Button>
@@ -531,15 +720,28 @@ export function VideoGenerator() {
                 setModel('doubao-seedance-1-0-pro-250528');
               }}
               size="sm"
-              className="flex-1"
             >
               🌋 火山方舟
+            </Button>
+            <Button
+              variant={provider === 'qianfan' ? "primary" : "secondary"}
+              onClick={() => {
+                setProvider('qianfan');
+                setModel('musesteamer-2.0-turbo-i2v-audio');
+                // Automatically switch to image-to-video mode for Qianfan
+                setGenerationMode('image-to-video');
+              }}
+              size="sm"
+            >
+              🎯 百度千帆
             </Button>
           </div>
           <p className="text-xs text-gray-600">
             {provider === 'veo' 
               ? '💡 Google Veo：支持音频生成，8秒高质量视频'
-              : '💡 火山方舟：支持多种模型，文生视频和图生视频能力强大'
+              : provider === 'volcengine'
+              ? '💡 火山方舟：支持多种模型，文生视频和图生视频能力强大'
+              : '💡 百度千帆：MuseSteamer系列，专业音视频生成，支持特效模式'
             }
           </p>
         </div>
@@ -549,32 +751,45 @@ export function VideoGenerator() {
           <label className="text-sm font-medium text-gray-700">
             生成模式
           </label>
-          <div className="flex gap-2">
-            <Button
-              variant={generationMode === 'text-to-video' ? "primary" : "secondary"}
-              onClick={() => {
-                setGenerationMode('text-to-video');
-                // Clear image selection when switching to text-to-video
-                if (selectedImage) {
-                  removeSelectedImage();
-                }
-              }}
-              size="sm"
-              className="flex-1"
-            >
-              📝 文本生成视频
-            </Button>
-            <Button
-              variant={generationMode === 'image-to-video' ? "primary" : "secondary"}
-              onClick={() => setGenerationMode('image-to-video')}
-              size="sm"
-              className="flex-1"
-              disabled={provider === 'veo' && model === 'veo-3.0-fast-generate-preview'}
-            >
-              🖼️ 图片+文本生成视频
-            </Button>
-          </div>
-          {generationMode === 'image-to-video' && (
+          {provider === 'qianfan' ? (
+            // For Qianfan (Baidu), only show image-to-video mode
+            <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+              <div className="flex items-center gap-2">
+                <span className="text-blue-600">🖼️ 图片+文本生成视频</span>
+                <span className="text-xs text-blue-500 bg-blue-100 px-2 py-1 rounded">仅支持此模式</span>
+              </div>
+              <p className="text-xs text-blue-600 mt-1">
+                💡 百度MuseSteamer专注于图片+文本生成视频，请上传一张图片作为视频的起始帧
+              </p>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <Button
+                variant={generationMode === 'text-to-video' ? "primary" : "secondary"}
+                onClick={() => {
+                  setGenerationMode('text-to-video');
+                  // Clear image selection when switching to text-to-video
+                  if (selectedImage) {
+                    removeSelectedImage();
+                  }
+                }}
+                size="sm"
+                className="flex-1"
+              >
+                📝 文本生成视频
+              </Button>
+              <Button
+                variant={generationMode === 'image-to-video' ? "primary" : "secondary"}
+                onClick={() => setGenerationMode('image-to-video')}
+                size="sm"
+                className="flex-1"
+                disabled={provider === 'veo' && model === 'veo-3.0-fast-generate-preview'}
+              >
+                🖼️ 图片+文本生成视频
+              </Button>
+            </div>
+          )}
+          {provider !== 'qianfan' && generationMode === 'image-to-video' && (
             <p className="text-xs text-blue-600">
               💡 图片+文本模式：上传一张图片作为视频的起始帧，AI将基于图片和文本描述生成动画
             </p>
@@ -648,10 +863,16 @@ export function VideoGenerator() {
             {(provider === 'veo' ? [
               { id: 'veo-3.0-fast-generate-preview', name: 'Veo 3 Fast (推荐)', desc: '最新模型，8秒高质量视频，包含音频，快速生成' },
               { id: 'veo-2.0-generate-001', name: 'Veo 2', desc: '稳定模型，5-8秒视频，静音，更多配置选项' },
-            ] : [
+            ] : provider === 'volcengine' ? [
               { id: 'doubao-seedance-1-0-pro-250528', name: 'Seedance Pro (推荐)', desc: '豆包视频生成专业版，高质量视频生成' },
               { id: 'doubao-seedance-1-0-lite-t2v-250428', name: 'Seedance Lite T2V', desc: '文本生成视频轻量版，快速生成' },
               { id: 'doubao-seedance-1-0-lite-i2v-250428', name: 'Seedance Lite I2V', desc: '图片+文本生成视频，支持首帧/尾帧/参考图' },
+            ] : [
+              { id: 'musesteamer-2.0-turbo-i2v-audio', name: 'MuseSteamer Turbo Audio (推荐)', desc: '支持音频生成的图生视频模型，5-10秒高质量视频' },
+              { id: 'musesteamer-2.0-turbo-i2v', name: 'MuseSteamer Turbo', desc: '快速图生视频模型，5秒高质量视频生成' },
+              { id: 'musesteamer-2.0-pro-i2v', name: 'MuseSteamer Pro', desc: '专业图生视频模型，更高质量和细节' },
+              { id: 'musesteamer-2.0-lite-i2v', name: 'MuseSteamer Lite', desc: '轻量级图生视频模型，快速生成' },
+              { id: 'musesteamer-2.0-turbo-i2v-effect', name: 'MuseSteamer Effect', desc: '特效模式，支持特殊视频效果生成' },
             ]).map((modelOption) => (
               <div
                 key={modelOption.id}
@@ -702,6 +923,11 @@ export function VideoGenerator() {
               💡 Veo 3 支持音频提示！可以在描述中加入对话（使用引号）、音效描述和环境音描述
             </p>
           )}
+          {model === 'musesteamer-2.0-turbo-i2v-audio' && (
+            <p className="text-xs text-blue-600">
+              🎵 MuseSteamer Audio 支持音频生成！可以在描述中加入对话内容、背景音乐描述和环境音效，例如："人物说话：'你好'"、"背景播放轻松的音乐"
+            </p>
+          )}
         </div>
 
         {/* Configuration Options */}
@@ -746,6 +972,41 @@ export function VideoGenerator() {
             />
           </div>
 
+          {/* Duration Selection - only for Qianfan */}
+          {provider === 'qianfan' && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">
+                视频时长
+              </label>
+              <div className="flex gap-2">
+                <Button
+                  variant={qianfanDuration === 5 ? "primary" : "secondary"}
+                  onClick={() => setQianfanDuration(5)}
+                  size="sm"
+                  className="flex-1"
+                >
+                  5秒
+                </Button>
+                {model === 'musesteamer-2.0-turbo-i2v-audio' && (
+                  <Button
+                    variant={qianfanDuration === 10 ? "primary" : "secondary"}
+                    onClick={() => setQianfanDuration(10)}
+                    size="sm"
+                    className="flex-1"
+                  >
+                    10秒
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-gray-600">
+                {model === 'musesteamer-2.0-turbo-i2v-audio' 
+                  ? '💡 MuseSteamer Turbo Audio 支持5秒和10秒视频生成'
+                  : '💡 此模型仅支持5秒视频生成'
+                }
+              </p>
+            </div>
+          )}
+
           {/* Person Generation - only for Veo 2 or when specified */}
           {(model === 'veo-2.0-generate-001' || personGeneration !== 'allow_all') && (
             <div className="space-y-2">
@@ -774,7 +1035,9 @@ export function VideoGenerator() {
         >
           {loading ? '生成中...' : `使用 ${provider === 'veo' 
             ? (model === 'veo-3.0-fast-generate-preview' ? 'Veo 3 Fast' : 'Veo 2')
-            : '火山方舟'
+            : provider === 'volcengine'
+            ? '火山方舟'
+            : '百度千帆'
           } 生成视频`}
         </Button>
 

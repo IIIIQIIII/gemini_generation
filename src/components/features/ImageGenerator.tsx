@@ -39,7 +39,6 @@ export function ImageGenerator() {
   const [sequentialMode, setSequentialMode] = useState<'disabled' | 'auto'>('disabled');
   const [maxImages, setMaxImages] = useState(3);
   const [size, setSize] = useState('2K');
-  const [watermark, setWatermark] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -92,8 +91,7 @@ export function ImageGenerator() {
           prompt,
           size,
           sequential_image_generation: sequentialMode,
-          response_format: 'b64_json',
-          watermark
+          response_format: 'b64_json'
         };
 
         if (uploadedImages.length > 0) {
@@ -288,19 +286,6 @@ export function ImageGenerator() {
               </div>
             </div>
 
-            {/* Watermark Toggle */}
-            <div className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                id="watermark"
-                checked={watermark}
-                onChange={(e) => setWatermark(e.target.checked)}
-                className="rounded"
-              />
-              <label htmlFor="watermark" className="text-sm font-medium text-gray-700">
-                添加AI生成水印
-              </label>
-            </div>
           </>
         )}
 

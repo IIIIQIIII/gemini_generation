@@ -1,0 +1,31 @@
+{
+  "header": {
+    "title": "AI Creative Workshop",
+    "subtitle": "Powered by Gemini",
+    "authMode": "Auth Mode:",
+    "apiKeyOption": "API Key",
+    "vertexAIOption": "Vertex AI",
+    "multiUser": "Multi-user concurrent",
+    "personalUse": "Personal use",
+    "services": "Text · Image · Video · Audio"
+  },
+  "home": {
+    "mainTitle": "AI Multimodal Creative Platform",
+    "mainDescription": "Powered by Gemini 2.5 Flash and Veo AI capabilities, providing you with text generation, image creation, video generation, and video analysis features. Simple, efficient, and intelligent multimodal creative experience.",
+    "apiKeyRequired": "API Key Required",
+    "apiKeyRequiredDesc": "Please set your Google Gemini API Key above to use AI features"
+  },
+  "footer": {
+    "text": "AI Creative Workshop - Let creativity extend infinitely",
+    "poweredBy": "Powered by Gemini 2.5 Flash | Built with Next.js & Tailwind CSS"
+  },
+  "tabs": {
+    "text": "Text Generation",
+    "image": "Image Generation",
+    "imageAnalyze": "Image Analysis",
+    "videoGenerate": "Video Generation",
+    "video": "Video Analysis",
+    "subtitle": "Subtitle Generation",
+    "speech": "Speech Synthesis"
+  }
+}

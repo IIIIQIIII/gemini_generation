@@ -1,0 +1,31 @@
+{
+  "header": {
+    "title": "AI 创作工坊",
+    "subtitle": "Powered by Gemini",
+    "authMode": "认证模式:",
+    "apiKeyOption": "API Key",
+    "vertexAIOption": "Vertex AI",
+    "multiUser": "多用户并发",
+    "personalUse": "个人使用",
+    "services": "文本 · 图片 · 视频 · 音频"
+  },
+  "home": {
+    "mainTitle": "AI 多模态创作平台",
+    "mainDescription": "基于 Gemini 2.5 Flash 和 Veo AI 的强大能力，为您提供文本生成、图片创作、视频生成和视频分析功能。简洁、高效、智能的多模态创作体验。",
+    "apiKeyRequired": "需要 API Key",
+    "apiKeyRequiredDesc": "请先在上方设置您的 Google Gemini API Key 以使用AI功能"
+  },
+  "footer": {
+    "text": "AI 创作工坊 - 让创意无限延伸",
+    "poweredBy": "Powered by Gemini 2.5 Flash | Built with Next.js & Tailwind CSS"
+  },
+  "tabs": {
+    "text": "文本生成",
+    "image": "图片生成",
+    "imageAnalyze": "图片分析",
+    "videoGenerate": "视频生成",
+    "video": "视频分析",
+    "subtitle": "字幕生成",
+    "speech": "语音合成"
+  }
+}

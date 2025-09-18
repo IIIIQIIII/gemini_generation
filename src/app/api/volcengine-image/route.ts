@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
       sequential_image_generation_options,
       stream = false,
       response_format = 'b64_json',
-      watermark = true
+      watermark = false
     } = body;
 
     if (!prompt) {

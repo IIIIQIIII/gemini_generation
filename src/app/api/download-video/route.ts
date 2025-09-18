@@ -42,9 +42,9 @@ export async function POST(request: NextRequest) {
   try {
     const { videoFile, localVideoPath, apiKey, videoUrl, provider } = await request.json();
 
-    // For Volcengine videos, download from URL
-    if (provider === 'volcengine' && videoUrl) {
-      console.log('Downloading Volcengine video from URL:', videoUrl);
+    // For Volcengine and Qianfan videos, download from URL
+    if ((provider === 'volcengine' || provider === 'qianfan') && videoUrl) {
+      console.log(`Downloading ${provider} video from URL:`, videoUrl);
       
       try {
         const response = await retryWithBackoff(async () => {
@@ -56,18 +56,18 @@ export async function POST(request: NextRequest) {
         }, 3, 2000);
 
         const videoBuffer = Buffer.from(await response.arrayBuffer());
-        console.log(`Volcengine video downloaded, size: ${videoBuffer.length} bytes`);
+        console.log(`${provider} video downloaded, size: ${videoBuffer.length} bytes`);
         
         // Return the video file directly for download
         return new NextResponse(videoBuffer, {
           headers: {
             'Content-Type': 'video/mp4',
-            'Content-Disposition': `attachment; filename="volcengine-video-${Date.now()}.mp4"`,
+            'Content-Disposition': `attachment; filename="${provider}-video-${Date.now()}.mp4"`,
             'Content-Length': videoBuffer.length.toString(),
           },
         });
       } catch (error) {
-        console.error('Failed to download Volcengine video:', error);
+        console.error(`Failed to download ${provider} video:`, error);
         return NextResponse.json({
           error: '无法下载视频文件',
           message: '服务器下载失败，请尝试刷新页面重新生成视频',
