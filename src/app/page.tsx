@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Header, AuthProvider } from '~/components/layout/Header';
 import { TabNavigation } from '~/components/layout/TabNavigation';
-import { TextGeneratorWithQueue } from '~/components/features/TextGeneratorWithQueue';
+import { TextGenerator } from '~/components/features/TextGenerator';
 import { ImageGenerator } from '~/components/features/ImageGenerator';
 import { ImageAnalyzer } from '~/components/features/ImageAnalyzer';
 import { VideoGenerator } from '~/components/features/VideoGenerator';
@@ -32,7 +32,7 @@ export default function Home() {
   const renderActiveComponent = () => {
     switch (activeTab) {
       case 'text':
-        return <TextGeneratorWithQueue />;
+        return <TextGenerator />;
       case 'image':
         return <ImageGenerator />;
       case 'image-analyze':
@@ -46,7 +46,7 @@ export default function Home() {
       case 'speech':
         return <SpeechSynthesizer />;
       default:
-        return <TextGeneratorWithQueue />;
+        return <TextGenerator />;
     }
   };
 

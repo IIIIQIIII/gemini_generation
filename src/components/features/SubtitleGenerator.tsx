@@ -140,7 +140,7 @@ export function SubtitleGenerator() {
     if (file) {
       // Check file size (limit to 100MB)
       if (file.size > 100 * 1024 * 1024) {
-        setError('文件大小不能超过100MB');
+        console.error('文件大小不能超过100MB');
         return;
       }
       
@@ -149,13 +149,11 @@ export function SubtitleGenerator() {
       const isValidType = allowedTypes.some(type => file.type.startsWith(type));
       
       if (!isValidType) {
-        setError('请选择音频或视频文件');
+        console.error('请选择音频或视频文件');
         return;
       }
       
       setAudioFile(file);
-      setError('');
-      setResult(null);
     }
   };
 

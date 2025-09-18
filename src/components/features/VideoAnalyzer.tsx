@@ -32,7 +32,7 @@ export function VideoAnalyzer() {
     if (file) {
       // Check file size (20MB limit)
       if (file.size > 20 * 1024 * 1024) {
-        setError('视频文件大小不能超过 20MB');
+        console.error('视频文件大小不能超过 20MB');
         return;
       }
       
