@@ -1,22 +1,31 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '~/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/Card';
 import { Input } from '~/components/ui/Input';
 import { useAuth } from '~/components/layout/Header';
+import { useVideoAnalysis } from '~/hooks/useQueue';
 
 export function VideoAnalyzer() {
   const { useVertexAI, setUseVertexAI, authMode, setAuthMode } = useAuth();
+  const { loading, error, result: queueResult, progress, submitToQueue, clearResult } = useVideoAnalysis();
   const [prompt, setPrompt] = useState('');
-  const [result, setResult] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [analysisMode, setAnalysisMode] = useState<'upload' | 'youtube'>('upload');
   const [uploadedVideo, setUploadedVideo] = useState<string | null>(null);
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [copySuccess, setCopySuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // 从排队结果中获取分析文本
+  const result = queueResult?.text || '';
+  
+  // 当有结果时，设置认证模式
+  useEffect(() => {
+    if (queueResult?.mode) {
+      setAuthMode(queueResult.mode as 'api-key' | 'vertex-ai');
+    }
+  }, [queueResult, setAuthMode]);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -40,33 +49,27 @@ export function VideoAnalyzer() {
 
   const handleAnalyze = async () => {
     if (!prompt.trim()) {
-      setError('请输入分析指令');
-      return;
+      return; // Hook will handle validation
     }
 
     if (analysisMode === 'upload' && !uploadedVideo) {
-      setError('请先上传视频文件');
-      return;
+      return; // Hook will handle validation
     }
 
     if (analysisMode === 'youtube' && !youtubeUrl.trim()) {
-      setError('请输入YouTube视频链接');
-      return;
+      return; // Hook will handle validation
     }
 
     // For API Key mode, check if API key is available
     if (!useVertexAI) {
       const apiKey = localStorage.getItem('gemini_api_key');
       if (!apiKey) {
-        setError('请先设置API Key，或选择Vertex AI模式');
-        return;
+        return; // Hook will handle validation
       }
     }
 
-    setLoading(true);
-    setError('');
-    setResult('');
-    setAuthMode(''); // Clear previous mode
+    // Clear previous auth mode
+    setAuthMode('');
 
     try {
       const requestBody: any = { 
@@ -85,26 +88,10 @@ export function VideoAnalyzer() {
         requestBody.apiKey = localStorage.getItem('gemini_api_key');
       }
 
-      const response = await fetch('/api/analyze-video', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || '分析视频时出错');
-      }
-
-      setResult(data.text);
-      setAuthMode(data.mode || 'api-key'); // Set the actual mode used
+      // 使用 hook 提交到排队系统
+      await submitToQueue('analyze-video', requestBody);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '分析视频时出错');
-    } finally {
-      setLoading(false);
+      console.error('Error preparing video analysis:', err);
     }
   };
 
@@ -131,22 +118,19 @@ export function VideoAnalyzer() {
           setTimeout(() => setCopySuccess(false), 2000); // 2秒后隐藏提示
         } catch (err) {
           console.error('复制失败:', err);
-          setError('复制失败，请手动选择文本复制');
         }
         
         document.body.removeChild(textArea);
       }
     } catch (err) {
       console.error('复制到剪贴板失败:', err);
-      setError('复制失败，请手动选择文本复制');
     }
   };
 
   const resetForm = () => {
     setUploadedVideo(null);
     setYoutubeUrl('');
-    setResult('');
-    setError('');
+    clearResult(); // 使用 hook 的 clearResult 方法
     setPrompt('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -196,6 +180,13 @@ The primary ambient sound is the clear, continuous sound of the waterfall and th
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* 排队进度显示 */}
+        {progress && (
+          <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+            <p className="text-sm text-blue-600">{progress}</p>
+          </div>
+        )}
+        
         {/* 当前认证模式状态显示 */}
         {authMode && (
           <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">

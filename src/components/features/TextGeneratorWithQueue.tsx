@@ -1,33 +1,38 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '~/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/Card';
 import { Input } from '~/components/ui/Input';
 import { useAuth } from '~/components/layout/Header';
-import { useTextGeneration } from '~/hooks/useQueue';
+import { useQueue } from '~/hooks/useQueue';
+import { QueueStatus } from './QueueStatus';
 
-// Robust clipboard copy utility function
+// 复制原来的提示词模板
+const PROMPT_TEMPLATES = [
+  { id: 'free-chat', label: 'AI对话模式', template: '' },
+  { id: 'translate-to-chinese', label: '中文翻译下文', template: '中文翻译下文:\n\n' },
+  { id: 'translate-to-english', label: '英文翻译下文', template: '英文翻译下文:\n\n' },
+  { id: 'explain', label: '请解释下文', template: '请解释下文:\n\n' },
+  { id: 'summarize', label: '请总结下文', template: '请总结下文:\n\n' }
+];
+
+// 复制原来的复制函数
 const copyToClipboard = async (text: string): Promise<{ success: boolean; message: string }> => {
-  // Check if we're in a browser environment
   if (typeof window === 'undefined') {
     return { success: false, message: '不支持服务器端复制' };
   }
 
-  // Method 1: Modern Clipboard API
   if (navigator.clipboard && navigator.clipboard.writeText) {
     try {
       await navigator.clipboard.writeText(text);
       return { success: true, message: '复制成功！' };
     } catch (err) {
       console.warn('Clipboard API failed:', err);
-      // Fall through to legacy method
     }
   }
 
-  // Method 2: Legacy execCommand fallback
   try {
-    // Create a temporary textarea element
     const textarea = document.createElement('textarea');
     textarea.value = text;
     textarea.style.position = 'fixed';
@@ -36,7 +41,7 @@ const copyToClipboard = async (text: string): Promise<{ success: boolean; messag
     
     document.body.appendChild(textarea);
     textarea.select();
-    textarea.setSelectionRange(0, 99999); // For mobile devices
+    textarea.setSelectionRange(0, 99999);
     
     const successful = document.execCommand('copy');
     document.body.removeChild(textarea);
@@ -52,36 +57,21 @@ const copyToClipboard = async (text: string): Promise<{ success: boolean; messag
   }
 };
 
-// 预定义的提示词模板
-const PROMPT_TEMPLATES = [
-  { id: 'free-chat', label: 'AI对话模式', template: '' },
-  { id: 'translate-to-chinese', label: '中文翻译下文', template: '中文翻译下文:\n\n' },
-  { id: 'translate-to-english', label: '英文翻译下文', template: '英文翻译下文:\n\n' },
-  { id: 'explain', label: '请解释下文', template: '请解释下文:\n\n' },
-  { id: 'summarize', label: '请总结下文', template: '请总结下文:\n\n' }
-];
-
-export function TextGenerator() {
-  const { useVertexAI, authMode, setAuthMode } = useAuth();
-  const { loading, error, result: queueResult, progress, submitToQueue, clearResult } = useTextGeneration();
+export function TextGeneratorWithQueue() {
+  const { useVertexAI } = useAuth();
+  const { submitToQueue, clearQueueState, isQueuing, queueItemId, queueError } = useQueue();
+  
   const [selectedTemplate, setSelectedTemplate] = useState('free-chat');
   const [userText, setUserText] = useState('');
+  const [result, setResult] = useState('');
+  const [error, setError] = useState('');
+  const [authMode, setAuthMode] = useState('');
   const [copyStatus, setCopyStatus] = useState<{ message: string; type: 'success' | 'error' | '' }>({ message: '', type: '' });
-  
-  // 获取实际的结果文本
-  const result = queueResult?.text || '';
-
-  // 当有结果时，设置认证模式
-  useEffect(() => {
-    if (queueResult?.mode) {
-      setAuthMode(queueResult.mode as 'api-key' | 'vertex-ai');
-    }
-  }, [queueResult, setAuthMode]);
 
   // 生成最终的提示词
   const generateFinalPrompt = () => {
     if (selectedTemplate === 'free-chat') {
-      return userText; // AI对话模式直接使用用户输入
+      return userText;
     }
     
     const template = PROMPT_TEMPLATES.find(t => t.id === selectedTemplate);
@@ -94,35 +84,60 @@ export function TextGenerator() {
     const finalPrompt = generateFinalPrompt();
     
     if (!finalPrompt.trim()) {
-      return; // 验证失败，不处理
+      if (selectedTemplate === 'free-chat') {
+        setError('请输入您想要询问的内容');
+      } else {
+        setError('请输入要处理的文本内容');
+      }
+      return;
     }
 
-    // For API Key mode, check if API key is available
     if (!useVertexAI) {
       const apiKey = localStorage.getItem('gemini_api_key');
       if (!apiKey) {
-        return; // 验证失败，不处理
+        setError('请先设置API Key，或选择Vertex AI模式');
+        return;
       }
     }
 
-    // 准备请求数据
+    setError('');
+    setResult('');
+    setAuthMode('');
+    clearQueueState();
+
     const requestData: any = { 
       prompt: finalPrompt, 
       useVertexAI: useVertexAI 
     };
 
-    // Only add API key if not using Vertex AI
     if (!useVertexAI) {
       requestData.apiKey = localStorage.getItem('gemini_api_key');
     }
 
-    // 使用 hook 提交到排队系统
-    await submitToQueue('generate-text', requestData);
+    // 提交到队列
+    const queueResult = await submitToQueue('generate-text', requestData);
+    
+    if (!queueResult.success) {
+      setError(queueResult.error || '提交到队列失败');
+    }
+  };
+
+  // 处理队列完成
+  const handleQueueComplete = (result: any) => {
+    setResult(result.text);
+    setAuthMode(result.mode || 'api-key');
+    clearQueueState();
+  };
+
+  // 处理队列错误
+  const handleQueueError = (error: string) => {
+    setError(error);
+    clearQueueState();
   };
 
   // 处理复制功能
   const handleCopy = async () => {
-    setCopyStatus({ message: '', type: '' }); // 清除之前的状态
+    setCopyStatus({ message: '', type: '' });
     
     const copyResult = await copyToClipboard(result);
     setCopyStatus({
@@ -130,13 +145,11 @@ export function TextGenerator() {
       type: copyResult.success ? 'success' : 'error'
     });
 
-    // 3秒后清除状态消息
     setTimeout(() => {
       setCopyStatus({ message: '', type: '' });
     }, 3000);
   };
 
-  // 检查是否可以生成
   const canGenerate = () => {
     return userText.trim().length > 0;
   };
@@ -146,7 +159,7 @@ export function TextGenerator() {
       <CardHeader>
         <CardTitle className="text-xl font-semibold text-gray-900">文本生成</CardTitle>
         <CardDescription>
-          使用 Gemini AI 生成高质量的中文文本内容 {loading && '(使用排队系统)'}
+          使用 Gemini AI 生成高质量的中文文本内容
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -162,11 +175,13 @@ export function TextGenerator() {
           </div>
         )}
 
-        {/* 排队进度显示 */}
-        {progress && (
-          <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
-            <p className="text-sm text-blue-600">{progress}</p>
-          </div>
+        {/* 排队状态显示 */}
+        {queueItemId && (
+          <QueueStatus
+            itemId={queueItemId}
+            onComplete={handleQueueComplete}
+            onError={handleQueueError}
+          />
         )}
 
         {/* 提示词模板选择器 */}
@@ -205,7 +220,7 @@ export function TextGenerator() {
           />
         </div>
 
-        {/* 预览最终提示词（只在非AI对话模式且有内容时显示） */}
+        {/* 预览最终提示词 */}
         {selectedTemplate !== 'free-chat' && userText.trim() && (
           <div className="space-y-2">
             <label className="text-sm font-medium text-gray-700">
@@ -219,17 +234,17 @@ export function TextGenerator() {
         
         <Button 
           onClick={handleGenerate} 
-          loading={loading}
-          disabled={loading || !canGenerate()}
+          loading={isQueuing}
+          disabled={isQueuing || !canGenerate() || !!queueItemId}
           variant="primary"
           className="w-full"
         >
-          {loading ? '生成中...' : '生成文本'}
+          {isQueuing ? '提交到队列...' : queueItemId ? '处理中...' : '生成文本'}
         </Button>
 
-        {error && (
+        {(error || queueError) && (
           <div className="p-3 rounded-lg bg-red-50 border border-red-200">
-            <p className="text-sm text-red-600">{error}</p>
+            <p className="text-sm text-red-600">{error || queueError}</p>
           </div>
         )}
 

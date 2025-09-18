@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Header, AuthProvider } from '~/components/layout/Header';
 import { TabNavigation } from '~/components/layout/TabNavigation';
-import { TextGenerator } from '~/components/features/TextGenerator';
+import { TextGeneratorWithQueue } from '~/components/features/TextGeneratorWithQueue';
 import { ImageGenerator } from '~/components/features/ImageGenerator';
 import { ImageAnalyzer } from '~/components/features/ImageAnalyzer';
 import { VideoGenerator } from '~/components/features/VideoGenerator';
@@ -11,6 +11,7 @@ import { VideoAnalyzer } from '~/components/features/VideoAnalyzer';
 import { SubtitleGenerator } from '~/components/features/SubtitleGenerator';
 import { SpeechSynthesizer } from '~/components/features/SpeechSynthesizer';
 import { ApiKeyInput } from '~/components/ui/ApiKeyInput';
+import { GlobalQueueStatus } from '~/components/layout/GlobalQueueStatus';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('text');
@@ -31,7 +32,7 @@ export default function Home() {
   const renderActiveComponent = () => {
     switch (activeTab) {
       case 'text':
-        return <TextGenerator />;
+        return <TextGeneratorWithQueue />;
       case 'image':
         return <ImageGenerator />;
       case 'image-analyze':
@@ -45,7 +46,7 @@ export default function Home() {
       case 'speech':
         return <SpeechSynthesizer />;
       default:
-        return <TextGenerator />;
+        return <TextGeneratorWithQueue />;
     }
   };
 
@@ -69,6 +70,11 @@ export default function Home() {
           <ApiKeyInput apiKey={apiKey} onApiKeySet={handleApiKeySet} />
           
           <TabNavigation activeTab={activeTab} onTabChange={setActiveTab} />
+          
+          {/* 全局排队状态显示 */}
+          <div className="max-w-2xl mx-auto mb-6">
+            <GlobalQueueStatus />
+          </div>
           
           <div className="flex justify-center">
             {apiKey ? renderActiveComponent() : (

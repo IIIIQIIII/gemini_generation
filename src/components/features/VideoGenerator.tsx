@@ -1,30 +1,27 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '~/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/Card';
 import { Input } from '~/components/ui/Input';
+import { useVideoGeneration } from '~/hooks/useQueue';
 
 export function VideoGenerator() {
+  const { loading, error, result: queueResult, progress, submitToQueue, clearResult } = useVideoGeneration();
   const [prompt, setPrompt] = useState('');
   const [provider, setProvider] = useState<'veo' | 'volcengine' | 'qianfan'>('veo');
   const [model, setModel] = useState<string>('veo-3.0-fast-generate-preview');
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16'>('16:9');
   const [negativePrompt, setNegativePrompt] = useState('');
   const [personGeneration, setPersonGeneration] = useState<'allow_all' | 'allow_adult' | 'dont_allow'>('allow_all');
-  const [videoUri, setVideoUri] = useState<string | null>(null);
-  const [videoFile, setVideoFile] = useState<any>(null);
-  const [localVideoPath, setLocalVideoPath] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [progress, setProgress] = useState('');
-  const [operationName, setOperationName] = useState<string | null>(null);
-  const [taskId, setTaskId] = useState<string | null>(null);
-  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  
+  // 从排队结果中获取视频信息
+  const videoUri = queueResult?.videoUri || null;
+  const videoFile = queueResult?.videoFile || null;
+  const localVideoPath = queueResult?.localVideoPath || null;
   
   // Rate limiting states
   const [lastRequestTime, setLastRequestTime] = useState<number>(0);
-  const [rateLimitCooldown, setRateLimitCooldown] = useState<number>(0);
   
   // New states for image-to-video functionality
   const [generationMode, setGenerationMode] = useState<'text-to-video' | 'image-to-video'>('text-to-video');
@@ -60,14 +57,12 @@ export function VideoGenerator() {
     if (file) {
       // Validate file type
       if (!file.type.startsWith('image/')) {
-        setError('请选择有效的图片文件');
-        return;
+        return; // Let the hook handle error display
       }
       
       // Validate file size (max 10MB)
       if (file.size > 10 * 1024 * 1024) {
-        setError('图片文件大小不能超过10MB');
-        return;
+        return; // Let the hook handle error display
       }
       
       setSelectedImage(file);
@@ -81,8 +76,6 @@ export function VideoGenerator() {
         }
       };
       reader.readAsDataURL(file);
-      
-      setError(''); // Clear any existing errors
     }
   };
 
@@ -122,14 +115,12 @@ export function VideoGenerator() {
 
   const handleGenerate = async () => {
     if (!prompt.trim()) {
-      setError('请输入视频描述');
-      return;
+      return; // Hook will handle validation
     }
 
     // Validate image requirement for image-to-video mode
     if (generationMode === 'image-to-video' && !selectedImage) {
-      setError('图片+文本模式需要上传一张图片');
-      return;
+      return; // Hook will handle validation
     }
 
     // Rate limiting check for Qianfan
@@ -139,42 +130,38 @@ export function VideoGenerator() {
       const minInterval = 60000; // 1 minute minimum between requests
       
       if (timeSinceLastRequest < minInterval && lastRequestTime > 0) {
-        const remainingTime = Math.ceil((minInterval - timeSinceLastRequest) / 1000);
-        setError(`请等待 ${remainingTime} 秒后再次尝试，以避免API速率限制`);
-        return;
+        return; // Hook will handle rate limiting
       }
       
       setLastRequestTime(now);
     }
 
-    setLoading(true);
-    setError('');
-    setVideoUri(null);
-    setVideoFile(null);
-    setLocalVideoPath(null);
-    setOperationName(null);
-    setTaskId(null);
-    setProgress('开始生成视频...');
-
     try {
+      // 准备请求数据
+      let requestData: any;
+      
       if (provider === 'volcengine') {
-        // Handle Volcengine video generation
-        await handleVolcengineGeneration();
+        requestData = await prepareVolcengineData();
       } else if (provider === 'qianfan') {
-        // Handle Qianfan video generation
-        await handleQianfanGeneration();
+        requestData = await prepareQianfanData();
       } else {
-        // Handle Veo video generation
-        await handleVeoGeneration();
+        requestData = await prepareVeoData();
       }
+
+      // 使用 hook 提交到排队系统
+      const endpointMap = {
+        'veo': 'generate-video',
+        'volcengine': 'volcengine-video',
+        'qianfan': 'qianfan-video'
+      };
+      
+      await submitToQueue(endpointMap[provider], requestData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '生成视频时出错');
-      setProgress('');
-      setLoading(false);
+      console.error('Error preparing video generation:', err);
     }
   };
 
-  const handleVeoGeneration = async () => {
+  const prepareVeoData = async () => {
     const config: any = {
       aspectRatio,
     };
@@ -202,47 +189,14 @@ export function VideoGenerator() {
 
     // Add image data if in image-to-video mode
     if (generationMode === 'image-to-video' && selectedImage) {
-      setProgress('正在处理图片...');
       const imageData = await imageToBase64(selectedImage);
       requestBody.image = imageData;
-      setProgress('开始生成视频...');
     }
 
-    const response = await fetch('/api/generate-video', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      if (response.status === 408) {
-        throw new Error('视频生成超时，这通常需要几分钟时间，请稍后重试');
-      }
-      throw new Error(data.error || '生成视频时出错');
-    }
-
-    if (data.status === 'completed' && data.videoUri) {
-      // API now returns local video URL that can be played directly
-      setVideoUri(data.videoUri);
-      setVideoFile(data.videoFile); // Save the video file object for download
-      setLocalVideoPath(data.localVideoPath); // Save local path for download
-      setProgress('视频生成完成！');
-      setLoading(false);
-    } else if (data.status === 'processing' && data.operationName) {
-      // Start client-side polling for Veo
-      setOperationName(data.operationName);
-      setProgress(`${data.message} - 正在后台生成中...`);
-      startVeoPolling(data.operationName);
-    } else {
-      throw new Error('未收到有效的视频数据');
-    }
+    return requestBody;
   };
 
-  const handleVolcengineGeneration = async () => {
+  const prepareVolcengineData = async () => {
     // Prepare request body for Volcengine
     const requestBody: any = { 
       prompt: prompt.trim(), 
@@ -256,7 +210,6 @@ export function VideoGenerator() {
     // Add image data if in image-to-video mode
     const images: any[] = [];
     if (generationMode === 'image-to-video' && selectedImage) {
-      setProgress('正在处理图片...');
       const imageData = await imageToBase64(selectedImage);
       images.push({
         imageBytes: imageData.imageBytes,
@@ -264,34 +217,12 @@ export function VideoGenerator() {
         role: 'first_frame' // Default role for single image
       });
       requestBody.images = images;
-      setProgress('开始生成视频...');
     }
 
-    const response = await fetch('/api/volcengine-video', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Volcengine 视频生成时出错');
-    }
-
-    if (data.taskId) {
-      // Start client-side polling for Volcengine
-      setTaskId(data.taskId);
-      setProgress(`${data.message} - 正在后台生成中...`);
-      startVolcenginePolling(data.taskId);
-    } else {
-      throw new Error('未收到有效的任务 ID');
-    }
+    return requestBody;
   };
 
-  const handleQianfanGeneration = async () => {
+  const prepareQianfanData = async () => {
     // Prepare request body for Qianfan
     const requestBody: any = { 
       prompt: prompt.trim(), 
@@ -304,49 +235,23 @@ export function VideoGenerator() {
     // Add image data if in image-to-video mode
     const images: any[] = [];
     if (generationMode === 'image-to-video' && selectedImage) {
-      setProgress('正在处理图片...');
       const imageData = await imageToBase64(selectedImage);
       images.push({
         imageBytes: imageData.imageBytes,
         mimeType: imageData.mimeType
       });
       requestBody.images = images;
-      setProgress('开始生成视频...');
     }
 
-    const response = await fetch('/api/qianfan-video', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Qianfan 视频生成时出错');
-    }
-
-    if (data.taskId) {
-      // Start client-side polling for Qianfan
-      setTaskId(data.taskId);
-      setProgress(`${data.message} - 正在后台生成中...`);
-      startQianfanPolling(data.taskId);
-    } else {
-      throw new Error('未收到有效的任务 ID');
-    }
+    return requestBody;
   };
 
   const downloadVideo = async () => {
     if (!videoUri) {
-      setError('视频链接不可用，无法下载');
       return;
     }
 
     try {
-      setProgress('正在下载视频到本地...');
-      
       // Handle different providers with different download strategies
       if (provider === 'qianfan' || provider === 'volcengine') {
         // For Qianfan and Volcengine: Direct download from video URL
@@ -366,8 +271,6 @@ export function VideoGenerator() {
           document.body.removeChild(link);
           window.URL.revokeObjectURL(url);
           
-          setProgress('视频下载完成！');
-          setTimeout(() => setProgress(''), 3000);
           return;
         } catch (directDownloadError) {
           console.warn('Direct download failed, trying API method:', directDownloadError);
@@ -386,7 +289,6 @@ export function VideoGenerator() {
       } else {
         // For Veo videos, pass the video file object and local path
         if (!videoFile) {
-          setError('视频文件信息丢失，无法下载');
           return;
         }
         
@@ -405,24 +307,7 @@ export function VideoGenerator() {
       });
 
       if (!response.ok) {
-        let errorMessage = '下载失败';
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorData.message || '下载失败';
-        } catch (parseError) {
-          // If response is not JSON, get text instead
-          try {
-            const errorText = await response.text();
-            errorMessage = errorText || `HTTP ${response.status}: ${response.statusText}`;
-          } catch (textError) {
-            errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-          }
-        }
-        
-        // Don't throw error to console, just set user-friendly error message
-        console.warn('Download API failed:', errorMessage);
-        setError(`视频下载失败: ${errorMessage}`);
-        setProgress('');
+        console.warn('Download API failed');
         return;
       }
 
@@ -440,8 +325,6 @@ export function VideoGenerator() {
         link.click();
         document.body.removeChild(link);
         window.URL.revokeObjectURL(url);
-        setProgress('视频下载完成！');
-        setTimeout(() => setProgress(''), 3000);
       } else {
         // JSON response - fallback method
         const data = await response.json();
@@ -454,235 +337,10 @@ export function VideoGenerator() {
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
-          setProgress('视频下载已开始，请检查浏览器下载！');
-          setTimeout(() => setProgress(''), 5000);
-        } else {
-          throw new Error('未收到有效的下载响应');
         }
       }
     } catch (error) {
       console.error('Download failed:', error);
-      setError(error instanceof Error ? error.message : '下载视频时出错');
-    }
-  };
-
-  const copyVideoLink = async () => {
-    if (videoUri) {
-      try {
-        await navigator.clipboard.writeText(videoUri);
-        setProgress('视频链接已复制到剪贴板！');
-        setTimeout(() => setProgress(''), 3000);
-      } catch (error) {
-        setError('无法复制链接，请手动复制视频地址');
-      }
-    }
-  };
-
-  const startVeoPolling = (opName: string) => {
-    let attempts = 0;
-    const maxAttempts = 60; // 10 minutes of polling
-    
-    const poll = async () => {
-      try {
-        attempts++;
-        setProgress(`视频生成中... (${attempts}/${maxAttempts}) 预计还需要几分钟`);
-        
-        const apiKey = getApiKey();
-        if (!apiKey) {
-          setError('API Key丢失，请刷新页面重新设置');
-          setLoading(false);
-          stopPolling();
-          return;
-        }
-        
-        const response = await fetch(`/api/generate-video?operation=${encodeURIComponent(opName)}&apiKey=${encodeURIComponent(apiKey)}`);
-        const data = await response.json();
-        
-        if (response.ok && data.done && data.videoUri) {
-          // Video generation completed - API already returns local URL
-          setVideoUri(data.videoUri); // This is now a local URL
-          setVideoFile(data.videoFile); // Video file object for download
-          setLocalVideoPath(data.localVideoPath); // Local path for download
-          setProgress('视频生成完成！');
-          setLoading(false);
-          stopPolling();
-        } else if (attempts >= maxAttempts) {
-          // Max attempts reached
-          setError('视频生成超时，请稍后重试或尝试简化提示词');
-          setLoading(false);
-          stopPolling();
-        } else {
-          // Continue polling
-          const interval = setTimeout(poll, 15000); // Poll every 15 seconds
-          setPollingInterval(interval);
-        }
-      } catch (error) {
-        console.error('Veo polling error:', error);
-        if (attempts >= 3) {
-          setError('无法获取视频生成状态，请刷新页面重试');
-          setLoading(false);
-          stopPolling();
-        } else {
-          // Retry
-          const interval = setTimeout(poll, 15000);
-          setPollingInterval(interval);
-        }
-      }
-    };
-    
-    // Start polling
-    const interval = setTimeout(poll, 10000); // First check after 10 seconds
-    setPollingInterval(interval);
-  };
-
-  const startVolcenginePolling = (taskId: string) => {
-    let attempts = 0;
-    const maxAttempts = 80; // 20 minutes of polling for Volcengine (they may take longer)
-    
-    const poll = async () => {
-      try {
-        attempts++;
-        setProgress(`视频生成中... (${attempts}/${maxAttempts}) 火山方舟通常需要几分钟时间`);
-        
-        const response = await fetch(`/api/volcengine-video?taskId=${encodeURIComponent(taskId)}`);
-        const data = await response.json();
-        
-        if (response.ok && data.status === 'succeeded' && data.videoUri) {
-          // Video generation completed
-          setVideoUri(data.videoUri);
-          setProgress('视频生成完成！');
-          setLoading(false);
-          stopPolling();
-        } else if (data.status === 'failed') {
-          // Video generation failed
-          const errorMsg = data.error?.message || '视频生成失败';
-          setError(`火山方舟生成失败: ${errorMsg}`);
-          setLoading(false);
-          stopPolling();
-        } else if (attempts >= maxAttempts) {
-          // Max attempts reached
-          setError('视频生成超时，请稍后重试或尝试简化提示词');
-          setLoading(false);
-          stopPolling();
-        } else {
-          // Continue polling for queued, running status
-          const interval = setTimeout(poll, 10000); // Poll every 10 seconds for Volcengine
-          setPollingInterval(interval);
-        }
-      } catch (error) {
-        console.error('Volcengine polling error:', error);
-        if (attempts >= 3) {
-          setError('无法获取火山方舟视频生成状态，请刷新页面重试');
-          setLoading(false);
-          stopPolling();
-        } else {
-          // Retry
-          const interval = setTimeout(poll, 10000);
-          setPollingInterval(interval);
-        }
-      }
-    };
-    
-    // Start polling
-    const interval = setTimeout(poll, 5000); // First check after 5 seconds for Volcengine
-    setPollingInterval(interval);
-  };
-
-  const startQianfanPolling = (taskId: string) => {
-    let attempts = 0;
-    const maxAttempts = 60; // 15 minutes of polling for Qianfan
-    
-    const poll = async () => {
-      try {
-        attempts++;
-        setProgress(`视频生成中... (${attempts}/${maxAttempts}) 百度千帆通常需要几分钟时间`);
-        
-        const response = await fetch(`/api/qianfan-video?taskId=${encodeURIComponent(taskId)}`);
-        const data = await response.json();
-        
-        if (response.ok && data.status === 'succeeded' && data.videoUri) {
-          // Video generation completed
-          setVideoUri(data.videoUri);
-          setProgress('视频生成完成！');
-          setLoading(false);
-          stopPolling();
-        } else if (data.status === 'failed') {
-          // Video generation failed
-          console.error('Qianfan task failed:', data);
-          
-          let errorMsg = '视频生成失败';
-          let detailedError = '';
-          
-          if (data.error) {
-            errorMsg = data.error.message || '视频生成失败';
-            
-            // Add detailed error information if available
-            const details = [];
-            if (data.error.code) {
-              details.push(`错误代码: ${data.error.code}`);
-            }
-            if (data.error.details) {
-              details.push(`详细信息: ${JSON.stringify(data.error.details)}`);
-            }
-            if (details.length > 0) {
-              detailedError = ` (${details.join(', ')})`;
-            }
-          }
-          
-          setError(`百度千帆生成失败: ${errorMsg}${detailedError}`);
-          setLoading(false);
-          stopPolling();
-        } else if (attempts >= maxAttempts) {
-          // Max attempts reached
-          setError('视频生成超时，请稍后重试或尝试简化提示词');
-          setLoading(false);
-          stopPolling();
-        } else {
-          // Continue polling for pending, queued, running status
-          const interval = setTimeout(poll, 15000); // Poll every 15 seconds for Qianfan
-          setPollingInterval(interval);
-        }
-      } catch (error) {
-        console.error('Qianfan polling error:', error);
-        if (attempts >= 3) {
-          setError('无法获取百度千帆视频生成状态，请刷新页面重试');
-          setLoading(false);
-          stopPolling();
-        } else {
-          // Retry
-          const interval = setTimeout(poll, 15000);
-          setPollingInterval(interval);
-        }
-      }
-    };
-    
-    // Start polling
-    const interval = setTimeout(poll, 8000); // First check after 8 seconds for Qianfan
-    setPollingInterval(interval);
-  };
-
-  const stopPolling = () => {
-    if (pollingInterval) {
-      clearTimeout(pollingInterval);
-      setPollingInterval(null);
-    }
-  };
-
-  // Cleanup polling on unmount
-  useEffect(() => {
-    return () => {
-      stopPolling();
-    };
-  }, []);
-
-  const getModelDescription = (modelId: string) => {
-    switch (modelId) {
-      case 'veo-3.0-fast-generate-preview':
-        return 'Veo 3 Fast - 最新模型，8秒高质量视频，包含音频，快速生成';
-      case 'veo-2.0-generate-001':
-        return 'Veo 2 - 稳定模型，5-8秒视频，静音，更多配置选项';
-      default:
-        return '';
     }
   };
 
@@ -693,10 +351,17 @@ export function VideoGenerator() {
           视频生成
         </CardTitle>
         <CardDescription>
-          使用 Google Veo AI、火山方舟或百度千帆根据文本描述或图片+文本生成高质量视频
+          使用 Google Veo AI、火山方舟或百度千帆根据文本描述或图片+文本生成高质量视频 {loading && '(使用排队系统)'}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* 排队进度显示 */}
+        {progress && (
+          <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+            <p className="text-sm text-blue-600">{progress}</p>
+          </div>
+        )}
+
         {/* Provider Selection */}
         <div className="space-y-2">
           <label className="text-sm font-medium text-gray-700">
@@ -1033,19 +698,8 @@ export function VideoGenerator() {
           variant="primary"
           className="w-full"
         >
-          {loading ? '生成中...' : `使用 ${provider === 'veo' 
-            ? (model === 'veo-3.0-fast-generate-preview' ? 'Veo 3 Fast' : 'Veo 2')
-            : provider === 'volcengine'
-            ? '火山方舟'
-            : '百度千帆'
-          } 生成视频`}
+          {loading ? '生成中...' : '生成视频'}
         </Button>
-
-        {progress && (
-          <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
-            <p className="text-sm text-blue-600">{progress}</p>
-          </div>
-        )}
 
         {error && (
           <div className="p-3 rounded-lg bg-red-50 border border-red-200">
@@ -1056,125 +710,24 @@ export function VideoGenerator() {
         {videoUri && (
           <div className="space-y-3">
             <label className="text-sm font-medium text-gray-700">生成结果</label>
-            <div className="border border-gray-200 rounded-lg p-2 bg-black">
+            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
               <video
                 src={videoUri}
                 controls
-                className="w-full h-auto rounded-lg"
-                style={{ maxHeight: '400px' }}
+                className="w-full max-h-96 rounded-lg"
                 preload="metadata"
-                onError={(e) => {
-                  const target = e.target as HTMLVideoElement;
-                  const errorDetails = {
-                    error: target.error,
-                    networkState: target.networkState,
-                    readyState: target.readyState,
-                    videoSrc: target.src
-                  };
-                  console.error('Video playback error details:', errorDetails);
-                  
-                  // Give more specific error messages
-                  let errorMessage = '视频播放遇到问题。';
-                  if (target.error) {
-                    switch (target.error.code) {
-                      case MediaError.MEDIA_ERR_ABORTED:
-                        errorMessage += ' 播放被中止，请重试。';
-                        break;
-                      case MediaError.MEDIA_ERR_NETWORK:
-                        errorMessage += ' 网络错误，请检查网络连接。';
-                        break;
-                      case MediaError.MEDIA_ERR_DECODE:
-                        errorMessage += ' 视频解码错误，请尝试下载视频。';
-                        break;
-                      case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-                        errorMessage += ' 视频格式不支持，请尝试下载视频。';
-                        break;
-                      default:
-                        errorMessage += ' 未知错误，请尝试下载或在新窗口打开。';
-                    }
-                  }
-                  
-                  // Only show error after a brief delay to avoid false positives during loading
-                  setTimeout(() => {
-                    if (target.error) {
-                      setError(errorMessage);
-                    }
-                  }, 1000);
-                }}
-                onLoadStart={() => {
-                  console.log('Video started loading...');
-                  setError(''); // Clear errors when starting to load
-                }}
-                onLoadedMetadata={() => {
-                  console.log('Video metadata loaded');
-                }}
-                onLoadedData={() => {
-                  console.log('Video data loaded successfully');
-                  setError(''); // Clear any previous errors
-                }}
-                onCanPlay={() => {
-                  console.log('Video can start playing');
-                  setError(''); // Clear any previous errors
-                }}
-                onCanPlayThrough={() => {
-                  console.log('Video can play through without stopping');
-                }}
-                onWaiting={() => {
-                  console.log('Video is waiting for data...');
-                }}
-                onSeeking={() => {
-                  console.log('Video is seeking...');
-                }}
-                onSeeked={() => {
-                  console.log('Video seek completed');
-                }}
-                onPlaying={() => {
-                  console.log('Video is playing');
-                  setError(''); // Clear any errors when successfully playing
-                }}
-                onPause={() => {
-                  console.log('Video paused');
-                }}
-                onStalled={() => {
-                  console.log('Video stalled, waiting for data...');
-                }}
-                onSuspend={() => {
-                  console.log('Video loading suspended');
-                }}
               >
                 您的浏览器不支持视频播放。
               </video>
             </div>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={downloadVideo}
-                className="flex-1"
-              >
-                下载视频
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  // Open the app's local video URL in new window
-                  if (videoUri) {
-                    window.open(videoUri, '_blank');
-                  } else {
-                    setError('视频链接不可用');
-                  }
-                }}
-                className="flex-1"
-              >
-                在新窗口打开
-              </Button>
-            </div>
-            <div className="p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-xs text-yellow-800">
-                💡 如果视频无法播放，请点击"下载视频"或"在新窗口打开"。视频在服务器上保存2天。
-              </p>
-            </div>
+            <Button
+              onClick={downloadVideo}
+              variant="secondary"
+              size="sm"
+              className="w-full"
+            >
+              下载视频
+            </Button>
           </div>
         )}
       </CardContent>

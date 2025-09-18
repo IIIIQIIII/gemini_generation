@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import { Button } from '~/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/Card';
 import { Input } from '~/components/ui/Input';
+import { useImageGeneration } from '~/hooks/useQueue';
 
 interface GeneratedImage {
   url?: string;
@@ -29,10 +30,8 @@ interface GenerationResult {
 }
 
 export function ImageGenerator() {
+  const { loading, error, result: queueResult, progress, submitToQueue, clearResult } = useImageGeneration();
   const [prompt, setPrompt] = useState('');
-  const [result, setResult] = useState<GeneratedImage[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [provider, setProvider] = useState<'gemini' | 'volcengine'>('volcengine');
   const [model, setModel] = useState('doubao-seedream-4-0-250828');
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
@@ -40,6 +39,9 @@ export function ImageGenerator() {
   const [maxImages, setMaxImages] = useState(3);
   const [size, setSize] = useState('2K');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // 从排队结果中获取图片信息
+  const result = queueResult?.images || queueResult?.data?.images || [];
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -65,28 +67,23 @@ export function ImageGenerator() {
     Promise.all(uploadPromises)
       .then((base64Images) => {
         setUploadedImages(base64Images);
-        setError('');
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : '处理图片失败');
+        console.error('Error processing images:', err);
       });
   };
 
   const handleGenerate = async () => {
     if (!prompt.trim()) {
-      setError('请输入图片描述');
-      return;
+      return; // Hook will handle validation
     }
 
-    setLoading(true);
-    setError('');
-    setResult([]);
-
     try {
-      let response;
+      // 准备请求数据
+      let requestData: any;
       
       if (provider === 'volcengine') {
-        const requestBody: any = {
+        requestData = {
           model,
           prompt,
           size,
@@ -95,75 +92,44 @@ export function ImageGenerator() {
         };
 
         if (uploadedImages.length > 0) {
-          requestBody.image = uploadedImages.length === 1 ? uploadedImages[0] : uploadedImages;
+          requestData.image = uploadedImages.length === 1 ? uploadedImages[0] : uploadedImages;
         }
 
         if (sequentialMode === 'auto') {
-          requestBody.sequential_image_generation_options = {
+          requestData.sequential_image_generation_options = {
             max_images: maxImages
           };
         }
 
-        response = await fetch('/api/volcengine-image', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestBody),
-        });
+        // 使用 hook 提交到排队系统
+        await submitToQueue('volcengine-image', requestData);
       } else {
-        // Gemini provider (existing functionality)
+        // Gemini provider
         const apiKey = localStorage.getItem('gemini_api_key');
         if (!apiKey) {
-          setError('请先设置Gemini API Key');
-          return;
+          return; // Hook will handle error display
         }
 
         if (uploadedImages.length > 0) {
-          response = await fetch('/api/edit-image', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ 
-              prompt, 
-              imageData: uploadedImages[0]?.split(',')[1], 
-              apiKey 
-            }),
-          });
+          requestData = { 
+            prompt, 
+            imageData: uploadedImages[0]?.split(',')[1], 
+            apiKey 
+          };
+          await submitToQueue('edit-image', requestData);
         } else {
-          response = await fetch('/api/generate-image', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ prompt, apiKey }),
-          });
+          requestData = { prompt, apiKey };
+          await submitToQueue('generate-image', requestData);
         }
       }
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || '生成图片时出错');
-      }
-
-      if (provider === 'volcengine' && data.success) {
-        setResult(data.data.images);
-      } else if (provider === 'gemini' && data.imageData) {
-        setResult([{ b64_json: data.imageData }]);
-      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '生成图片时出错');
-    } finally {
-      setLoading(false);
+      console.error('Error preparing image generation:', err);
     }
   };
 
   const resetForm = () => {
     setUploadedImages([]);
-    setResult([]);
-    setError('');
+    clearResult(); // 使用 hook 的 clearResult 方法
     setPrompt('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -204,10 +170,17 @@ export function ImageGenerator() {
           AI 图片生成
         </CardTitle>
         <CardDescription>
-          {getGenerationModeDescription()}
+          {getGenerationModeDescription()} {loading && '(使用排队系统)'}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* 排队进度显示 */}
+        {progress && (
+          <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+            <p className="text-sm text-blue-600">{progress}</p>
+          </div>
+        )}
+        
         {/* Provider Selection */}
         <div className="space-y-2">
           <label className="text-sm font-medium text-gray-700">AI 模型选择</label>
@@ -390,7 +363,7 @@ export function ImageGenerator() {
               生成结果 ({result.length}张图片)
             </label>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {result.map((image, index) => (
+              {result.map((image: GeneratedImage, index: number) => (
                 <div key={index} className="space-y-2">
                   <div className="border border-gray-200 rounded-lg p-2">
                     <img

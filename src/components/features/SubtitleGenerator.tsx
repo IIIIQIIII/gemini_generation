@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import { Button } from '~/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/Card';
 import { Input } from '~/components/ui/Input';
+import { useSubtitleGeneration } from '~/hooks/useQueue';
 
 // Robust clipboard copy utility function
 const copyToClipboard = async (text: string): Promise<{ success: boolean; message: string }> => {
@@ -112,6 +113,7 @@ interface SubtitleResult {
 }
 
 export function SubtitleGenerator() {
+  const { loading, error, result: queueResult, progress, submitToQueue, clearResult } = useSubtitleGeneration();
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [language, setLanguage] = useState('zh-CN');
   const [captionType, setCaptionType] = useState('auto');
@@ -119,13 +121,11 @@ export function SubtitleGenerator() {
   const [maxLines, setMaxLines] = useState('1');
   const [useItn, setUseItn] = useState(true);
   const [usePunc, setUsePunc] = useState(true);
-  const [result, setResult] = useState<SubtitleResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState('');
   const [copyStatus, setCopyStatus] = useState<{ message: string; type: 'success' | 'error' | '' }>({ message: '', type: '' });
-  const [taskId, setTaskId] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // 从排队结果中获取字幕数据
+  const result = queueResult;
 
   // Get API key from localStorage
   const getApiKey = () => {
@@ -161,91 +161,32 @@ export function SubtitleGenerator() {
 
   const handleGenerate = async () => {
     if (!audioFile) {
-      setError('请先选择音频或视频文件');
-      return;
+      return; // Hook will handle validation
     }
 
     // Check API key
     const apiKey = getApiKey();
     if (!apiKey) {
-      setError('请先设置API Key');
-      return;
+      return; // Hook will handle validation
     }
 
-    setLoading(true);
-    setProcessing(true);
-    setError('');
-    setResult(null);
-
     try {
-      // Step 1: Submit audio for processing
-      const formData = new FormData();
-      formData.append('audio', audioFile);
-      formData.append('language', language);
-      formData.append('caption_type', captionType);
-      formData.append('words_per_line', wordsPerLine);
-      formData.append('max_lines', maxLines);
-      formData.append('use_itn', useItn.toString());
-      formData.append('use_punc', usePunc.toString());
-      formData.append('apiKey', apiKey);
-
-      const submitResponse = await fetch('/api/subtitle/submit', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const submitData = await submitResponse.json();
-
-      if (!submitResponse.ok) {
-        throw new Error(submitData.error || '提交任务失败');
-      }
-
-      setTaskId(submitData.taskId);
-      setLoading(false);
-
-      // Step 2: Poll for results
-      let attempts = 0;
-      const maxAttempts = 60; // 最多等待5分钟
-      
-      const pollResults = async (): Promise<void> => {
-        try {
-          const queryResponse = await fetch(`/api/subtitle/query?taskId=${submitData.taskId}&blocking=1`);
-          const queryData = await queryResponse.json();
-
-          if (!queryResponse.ok) {
-            throw new Error(queryData.error || '查询结果失败');
-          }
-
-          if (queryData.status === 'completed') {
-            setResult({
-              taskId: queryData.taskId,
-              duration: queryData.duration,
-              utterances: queryData.utterances,
-            });
-            setProcessing(false);
-          } else if (queryData.status === 'processing') {
-            attempts++;
-            if (attempts >= maxAttempts) {
-              throw new Error('处理超时，请重试');
-            }
-            // Wait 5 seconds before next poll
-            setTimeout(pollResults, 5000);
-          } else {
-            throw new Error(queryData.error || '处理失败');
-          }
-        } catch (err) {
-          setError(err instanceof Error ? err.message : '查询结果时出错');
-          setProcessing(false);
-        }
+      // 准备请求数据
+      const requestData = {
+        audioFile,
+        language,
+        caption_type: captionType,
+        words_per_line: wordsPerLine,
+        max_lines: maxLines,
+        use_itn: useItn.toString(),
+        use_punc: usePunc.toString(),
+        apiKey
       };
 
-      // Start polling
-      setTimeout(pollResults, 2000);
-
+      // 使用 hook 提交到排队系统
+      await submitToQueue('subtitle-submit', requestData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '生成字幕时出错');
-      setLoading(false);
-      setProcessing(false);
+      console.error('Error preparing subtitle generation:', err);
     }
   };
 
@@ -426,26 +367,22 @@ export function SubtitleGenerator() {
           </div>
         </div>
         
+        {/* 排队进度显示 */}
+        {progress && (
+          <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+            <p className="text-sm text-blue-600">{progress}</p>
+          </div>
+        )}
+        
         <Button 
           onClick={handleGenerate} 
           loading={loading}
-          disabled={loading || processing || !audioFile}
+          disabled={loading || !audioFile}
           variant="primary"
           className="w-full"
         >
-          {loading ? '提交中...' : processing ? '处理中...' : '生成字幕'}
+          {loading ? '生成中...' : '生成字幕'}
         </Button>
-
-        {processing && (
-          <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
-            <div className="flex items-center space-x-3">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-              <p className="text-sm text-blue-900">
-                正在处理音频文件，请稍候... (任务ID: {taskId})
-              </p>
-            </div>
-          </div>
-        )}
 
         {error && (
           <div className="p-3 rounded-lg bg-red-50 border border-red-200">
